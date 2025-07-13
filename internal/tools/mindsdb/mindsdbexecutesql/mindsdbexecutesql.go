@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package mysqlexecutesql
+package mindsdbexecutesql
 
 import (
 	"context"
@@ -21,13 +21,11 @@ import (
 
 	yaml "github.com/goccy/go-yaml"
 	"github.com/googleapis/genai-toolbox/internal/sources"
-	"github.com/googleapis/genai-toolbox/internal/sources/cloudsqlmysql"
 	"github.com/googleapis/genai-toolbox/internal/sources/mindsdb"
-	"github.com/googleapis/genai-toolbox/internal/sources/mysql"
 	"github.com/googleapis/genai-toolbox/internal/tools"
 )
 
-const kind string = "mysql-execute-sql"
+const kind string = "mindsdb-execute-sql"
 
 func init() {
 	if !tools.Register(kind, newConfig) {
@@ -44,15 +42,13 @@ func newConfig(ctx context.Context, name string, decoder *yaml.Decoder) (tools.T
 }
 
 type compatibleSource interface {
-	MySQLPool() *sql.DB
+	MindsDBPool() *sql.DB
 }
 
 // validate compatible sources are still compatible
-var _ compatibleSource = &cloudsqlmysql.Source{}
-var _ compatibleSource = &mysql.Source{}
 var _ compatibleSource = &mindsdb.Source{}
 
-var compatibleSources = [...]string{cloudsqlmysql.SourceKind, mysql.SourceKind, mindsdb.SourceKind}
+var compatibleSources = [...]string{mindsdb.SourceKind}
 
 type Config struct {
 	Name         string   `yaml:"name" validate:"required"`
@@ -97,7 +93,7 @@ func (cfg Config) Initialize(srcs map[string]sources.Source) (tools.Tool, error)
 		Kind:         kind,
 		Parameters:   parameters,
 		AuthRequired: cfg.AuthRequired,
-		Pool:         s.MySQLPool(),
+		Pool:         s.MindsDBPool(),
 		manifest:     tools.Manifest{Description: cfg.Description, Parameters: parameters.Manifest(), AuthRequired: cfg.AuthRequired},
 		mcpManifest:  mcpManifest,
 	}
@@ -195,4 +191,4 @@ func (t Tool) McpManifest() tools.McpManifest {
 
 func (t Tool) Authorized(verifiedAuthServices []string) bool {
 	return tools.IsAuthorized(t.AuthRequired, verifiedAuthServices)
-}
+} 

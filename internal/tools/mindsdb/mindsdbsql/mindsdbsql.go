@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package mysqlexecutesql
+package mindsdbsql
 
 import (
 	"context"
@@ -21,13 +21,11 @@ import (
 
 	yaml "github.com/goccy/go-yaml"
 	"github.com/googleapis/genai-toolbox/internal/sources"
-	"github.com/googleapis/genai-toolbox/internal/sources/cloudsqlmysql"
 	"github.com/googleapis/genai-toolbox/internal/sources/mindsdb"
-	"github.com/googleapis/genai-toolbox/internal/sources/mysql"
 	"github.com/googleapis/genai-toolbox/internal/tools"
 )
 
-const kind string = "mysql-execute-sql"
+const kind string = "mindsdb-sql"
 
 func init() {
 	if !tools.Register(kind, newConfig) {
@@ -44,22 +42,23 @@ func newConfig(ctx context.Context, name string, decoder *yaml.Decoder) (tools.T
 }
 
 type compatibleSource interface {
-	MySQLPool() *sql.DB
+	MindsDBPool() *sql.DB
 }
 
 // validate compatible sources are still compatible
-var _ compatibleSource = &cloudsqlmysql.Source{}
-var _ compatibleSource = &mysql.Source{}
 var _ compatibleSource = &mindsdb.Source{}
 
-var compatibleSources = [...]string{cloudsqlmysql.SourceKind, mysql.SourceKind, mindsdb.SourceKind}
+var compatibleSources = [...]string{mindsdb.SourceKind}
 
 type Config struct {
-	Name         string   `yaml:"name" validate:"required"`
-	Kind         string   `yaml:"kind" validate:"required"`
-	Source       string   `yaml:"source" validate:"required"`
-	Description  string   `yaml:"description" validate:"required"`
-	AuthRequired []string `yaml:"authRequired"`
+	Name               string           `yaml:"name" validate:"required"`
+	Kind               string           `yaml:"kind" validate:"required"`
+	Source             string           `yaml:"source" validate:"required"`
+	Description        string           `yaml:"description" validate:"required"`
+	Statement          string           `yaml:"statement" validate:"required"`
+	AuthRequired       []string         `yaml:"authRequired"`
+	Parameters         tools.Parameters `yaml:"parameters"`
+	TemplateParameters tools.Parameters `yaml:"templateParameters"`
 }
 
 // validate interface
@@ -82,24 +81,26 @@ func (cfg Config) Initialize(srcs map[string]sources.Source) (tools.Tool, error)
 		return nil, fmt.Errorf("invalid source for %q tool: source kind must be one of %q", kind, compatibleSources)
 	}
 
-	sqlParameter := tools.NewStringParameter("sql", "The sql to execute.")
-	parameters := tools.Parameters{sqlParameter}
+	allParameters, paramManifest, paramMcpManifest := tools.ProcessParameters(cfg.TemplateParameters, cfg.Parameters)
 
 	mcpManifest := tools.McpManifest{
 		Name:        cfg.Name,
 		Description: cfg.Description,
-		InputSchema: parameters.McpManifest(),
+		InputSchema: paramMcpManifest,
 	}
 
 	// finish tool setup
 	t := Tool{
-		Name:         cfg.Name,
-		Kind:         kind,
-		Parameters:   parameters,
-		AuthRequired: cfg.AuthRequired,
-		Pool:         s.MySQLPool(),
-		manifest:     tools.Manifest{Description: cfg.Description, Parameters: parameters.Manifest(), AuthRequired: cfg.AuthRequired},
-		mcpManifest:  mcpManifest,
+		Name:               cfg.Name,
+		Kind:               kind,
+		Parameters:         cfg.Parameters,
+		TemplateParameters: cfg.TemplateParameters,
+		AllParams:          allParameters,
+		Statement:          cfg.Statement,
+		AuthRequired:       cfg.AuthRequired,
+		Pool:               s.MindsDBPool(),
+		manifest:           tools.Manifest{Description: cfg.Description, Parameters: paramManifest, AuthRequired: cfg.AuthRequired},
+		mcpManifest:        mcpManifest,
 	}
 	return t, nil
 }
@@ -108,28 +109,36 @@ func (cfg Config) Initialize(srcs map[string]sources.Source) (tools.Tool, error)
 var _ tools.Tool = Tool{}
 
 type Tool struct {
-	Name         string           `yaml:"name"`
-	Kind         string           `yaml:"kind"`
-	AuthRequired []string         `yaml:"authRequired"`
-	Parameters   tools.Parameters `yaml:"parameters"`
+	Name               string           `yaml:"name"`
+	Kind               string           `yaml:"kind"`
+	AuthRequired       []string         `yaml:"authRequired"`
+	Parameters         tools.Parameters `yaml:"parameters"`
+	TemplateParameters tools.Parameters `yaml:"templateParameters"`
+	AllParams          tools.Parameters `yaml:"allParams"`
 
 	Pool        *sql.DB
+	Statement   string
 	manifest    tools.Manifest
 	mcpManifest tools.McpManifest
 }
 
 func (t Tool) Invoke(ctx context.Context, params tools.ParamValues) ([]any, error) {
-	sliceParams := params.AsSlice()
-	sql, ok := sliceParams[0].(string)
-	if !ok {
-		return nil, fmt.Errorf("unable to get cast %s", sliceParams[0])
+	paramsMap := params.AsMap()
+	newStatement, err := tools.ResolveTemplateParams(t.TemplateParameters, t.Statement, paramsMap)
+	if err != nil {
+		return nil, fmt.Errorf("unable to extract template params %w", err)
 	}
 
-	results, err := t.Pool.QueryContext(ctx, sql)
+	newParams, err := tools.GetParams(t.Parameters, paramsMap)
+	if err != nil {
+		return nil, fmt.Errorf("unable to extract standard params %w", err)
+	}
+
+	sliceParams := newParams.AsSlice()
+	results, err := t.Pool.QueryContext(ctx, newStatement, sliceParams...)
 	if err != nil {
 		return nil, fmt.Errorf("unable to execute query: %w", err)
 	}
-	defer results.Close()
 
 	cols, err := results.Columns()
 	if err != nil {
@@ -142,6 +151,7 @@ func (t Tool) Invoke(ctx context.Context, params tools.ParamValues) ([]any, erro
 	for i := range rawValues {
 		values[i] = &rawValues[i]
 	}
+	defer results.Close()
 
 	colTypes, err := results.ColumnTypes()
 	if err != nil {
@@ -182,7 +192,7 @@ func (t Tool) Invoke(ctx context.Context, params tools.ParamValues) ([]any, erro
 }
 
 func (t Tool) ParseParams(data map[string]any, claims map[string]map[string]any) (tools.ParamValues, error) {
-	return tools.ParseParams(t.Parameters, data, claims)
+	return tools.ParseParams(t.AllParams, data, claims)
 }
 
 func (t Tool) Manifest() tools.Manifest {
@@ -195,4 +205,4 @@ func (t Tool) McpManifest() tools.McpManifest {
 
 func (t Tool) Authorized(verifiedAuthServices []string) bool {
 	return tools.IsAuthorized(t.AuthRequired, verifiedAuthServices)
-}
+} 
