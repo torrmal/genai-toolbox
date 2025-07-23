@@ -512,6 +512,27 @@ steps:
           looker \
           looker
 
+  - id: "mindsdb"
+    name: golang:1
+    waitFor: ["compile-test-binary"]
+    entrypoint: /bin/bash
+    env:
+      - "GOPATH=/gopath"
+      - "MINDSDB_PORT=$_MINDSDB_PORT"
+      - "MINDSDB_DATABASE=$_MINDSDB_DATABASE"
+      - "SERVICE_ACCOUNT_EMAIL=$SERVICE_ACCOUNT_EMAIL"
+    secretEnv: ["MINDSDB_HOST", "MINDSDB_USER", "MINDSDB_PASS", "CLIENT_ID"]
+    volumes:
+      - name: "go"
+        path: "/gopath"
+    args:
+      - -c
+      - |
+        .ci/test_with_coverage.sh \
+          "MindsDB" \
+          mindsdb \
+          mindsdb
+
   - id: "alloydbwaitforoperation"
     name: golang:1
     waitFor: ["compile-test-binary"]
@@ -621,6 +642,12 @@ availableSecrets:
       env: OCEANBASE_USER
     - versionName: projects/$PROJECT_ID/secrets/oceanbase_pass/versions/latest
       env: OCEANBASE_PASSWORD
+    - versionName: projects/$PROJECT_ID/secrets/mindsdb_host/versions/latest
+      env: MINDSDB_HOST
+    - versionName: projects/$PROJECT_ID/secrets/mindsdb_user/versions/latest
+      env: MINDSDB_USER
+    - versionName: projects/$PROJECT_ID/secrets/mindsdb_pass/versions/latest
+      env: MINDSDB_PASS
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -657,3 +684,5 @@ substitutions:
   _TIDB_PORT: "4000"
   _OCEANBASE_PORT: "2883"
   _OCEANBASE_DATABASE: "oceanbase"
+  _MINDSDB_PORT: "47335"
+  _MINDSDB_DATABASE: "mindsdb"
