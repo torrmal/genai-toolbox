@@ -1174,6 +1174,7 @@ func TestPrebuiltTools(t *testing.T) {
 	postgresconfig, _ := prebuiltconfigs.Get("postgres")
 	spanner_config, _ := prebuiltconfigs.Get("spanner")
 	spannerpg_config, _ := prebuiltconfigs.Get("spanner-postgres")
+	mindsdb_config, _ := prebuiltconfigs.Get("mindsdb")
 	ctx, err := testutils.ContextWithNewLogger()
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
@@ -1310,6 +1311,16 @@ func TestPrebuiltTools(t *testing.T) {
 				"spanner-postgres-database-tools": tools.ToolsetConfig{
 					Name:      "spanner-postgres-database-tools",
 					ToolNames: []string{"execute_sql", "execute_sql_dql", "list_tables"},
+				},
+			},
+		},
+		{
+			name: "mindsdb prebuilt tools",
+			in:   mindsdb_config,
+			wantToolset: server.ToolsetConfigs{
+				"mindsdb-tools": tools.ToolsetConfig{
+					Name:      "mindsdb-tools",
+					ToolNames: []string{"mindsdb-execute-sql", "mindsdb-sql"},
 				},
 			},
 		},

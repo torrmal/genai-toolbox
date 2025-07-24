@@ -36,6 +36,7 @@ func TestLoadPrebuiltToolYAMLs(t *testing.T) {
 		"postgres",
 		"spanner-postgres",
 		"spanner",
+		"mindsdb",
 	}
 	t.Run(test_name, func(t *testing.T) {
 		configsMap, keys, err := loadPrebuiltToolYAMLs()
@@ -80,6 +81,7 @@ func TestGetPrebuiltTool(t *testing.T) {
 	postgresconfig, _ := Get("postgres")
 	spanner_config, _ := Get("spanner")
 	spannerpg_config, _ := Get("spanner-postgres")
+	mindsdb_config, _ := Get("mindsdb")
 	if len(alloydb_admin_config) <= 0 {
 		t.Fatalf("unexpected error: could not fetch alloydb prebuilt tools yaml")
 	}
@@ -114,6 +116,9 @@ func TestGetPrebuiltTool(t *testing.T) {
 		t.Fatalf("unexpected error: could not fetch spanner prebuilt tools yaml")
 	}
 	if len(spannerpg_config) <= 0 {
+		t.Fatalf("unexpected error: could not fetch spanner pg prebuilt tools yaml")
+	}
+	if len(mindsdb_config) <= 0 {
 		t.Fatalf("unexpected error: could not fetch spanner pg prebuilt tools yaml")
 	}
 }
