@@ -93,7 +93,7 @@ func setupMindsDBIntegration(t *testing.T, ctx context.Context) {
 
 	// The SQL command to connect MindsDB to the MySQL test database.
 	createStatement := fmt.Sprintf(`
-        CREATE DATABASE %s
+        CREATE DATABASE IF NOT EXISTS %s
         WITH ENGINE = 'mysql',
         PARAMETERS = {
             "user": "%s",
