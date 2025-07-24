@@ -2,7 +2,9 @@
 
 # MCP Toolbox for Databases
 
-[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/Dmm69peqjh)
+[![Docs](https://img.shields.io/badge/docs-MCP_Toolbox-blue)](https://googleapis.github.io/genai-toolbox/)
+[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=flat&logo=discord&logoColor=white)](https://discord.gg/Dmm69peqjh)
+[![Medium](https://img.shields.io/badge/Medium-12100E?style=flat&logo=medium&logoColor=white)](https://medium.com/@mcp_toolbox)
 [![Go Report Card](https://goreportcard.com/badge/github.com/googleapis/genai-toolbox)](https://goreportcard.com/report/github.com/googleapis/genai-toolbox)
 
 > [!NOTE]
@@ -488,6 +490,7 @@ For more detailed instructions on using the Toolbox Core SDK, see the
       "github.com/firebase/genkit/go/ai"
       "github.com/firebase/genkit/go/genkit"
       "github.com/googleapis/mcp-toolbox-sdk-go/core"
+      "github.com/googleapis/mcp-toolbox-sdk-go/tbgenkit"
       "github.com/invopop/jsonschema"
     )
 
@@ -503,30 +506,12 @@ For more detailed instructions on using the Toolbox Core SDK, see the
       // Framework agnostic tool
       tool, err := client.LoadTool("toolName", ctx)
 
-      // Fetch the tool's input schema
-      inputschema, err := tool.InputSchema()
-
-      var schema *jsonschema.Schema
-      _ = json.Unmarshal(inputschema, &schema)
-
-      executeFn := func(ctx *ai.ToolContext, input any) (string, error) {
-        result, err := tool.Invoke(ctx, input.(map[string]any))
-        if err != nil {
-          // Propagate errors from the tool invocation.
-          return "", err
-        }
-
-        return result.(string), nil
-      }
-
+      // Convert the tool using the tbgenkit package
       // Use this tool with Genkit Go
-      genkitTool := genkit.DefineToolWithInputSchema(
-        g,
-        tool.Name(),
-        tool.Description(),
-        schema,
-        executeFn,
-      )
+      genkitTool, err := tbgenkit.ToGenkitTool(tool, g)
+  		if err != nil {
+  			log.Fatalf("Failed to convert tool: %v\n", err)
+  		}
     }
     ```
 

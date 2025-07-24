@@ -95,6 +95,9 @@ func (s *Source) MindsDBPool() *sql.DB {
 	return s.Pool
 }
 
+func (s *Source) MySQLPool() *sql.DB {
+	return s.Pool
+}
 func initMindsDBConnectionPool(ctx context.Context, tracer trace.Tracer, name, host, port, user, pass, dbname, queryTimeout string) (*sql.DB, error) {
 	//nolint:all // Reassigned ctx
 	ctx, span := sources.InitConnectionSpan(ctx, tracer, SourceKind, name)

@@ -23,14 +23,20 @@ import (
 func TestLoadPrebuiltToolYAMLs(t *testing.T) {
 	test_name := "test load prebuilt configs"
 	expectedKeys := []string{
+		"alloydb-postgres-admin",
 		"alloydb-postgres",
 		"bigquery",
 		"cloud-sql-mssql",
 		"cloud-sql-mysql",
 		"cloud-sql-postgres",
+		"firestore",
+		"looker",
+		"mssql",
+		"mysql",
 		"postgres",
 		"spanner-postgres",
 		"spanner",
+		"mindsdb",
 	}
 	t.Run(test_name, func(t *testing.T) {
 		configsMap, keys, err := loadPrebuiltToolYAMLs()
@@ -63,14 +69,22 @@ func TestLoadPrebuiltToolYAMLs(t *testing.T) {
 }
 
 func TestGetPrebuiltTool(t *testing.T) {
+	alloydb_admin_config, _ := Get("alloydb-postgres-admin")
 	alloydb_config, _ := Get("alloydb-postgres")
 	bigquery_config, _ := Get("bigquery")
 	cloudsqlpg_config, _ := Get("cloud-sql-postgres")
 	cloudsqlmysql_config, _ := Get("cloud-sql-mysql")
 	cloudsqlmssql_config, _ := Get("cloud-sql-mssql")
+	firestoreconfig, _ := Get("firestore")
+	mysql_config, _ := Get("mysql")
+	mssql_config, _ := Get("mssql")
 	postgresconfig, _ := Get("postgres")
 	spanner_config, _ := Get("spanner")
 	spannerpg_config, _ := Get("spanner-postgres")
+	mindsdb_config, _ := Get("mindsdb")
+	if len(alloydb_admin_config) <= 0 {
+		t.Fatalf("unexpected error: could not fetch alloydb prebuilt tools yaml")
+	}
 	if len(alloydb_config) <= 0 {
 		t.Fatalf("unexpected error: could not fetch alloydb prebuilt tools yaml")
 	}
@@ -86,6 +100,15 @@ func TestGetPrebuiltTool(t *testing.T) {
 	if len(cloudsqlmssql_config) <= 0 {
 		t.Fatalf("unexpected error: could not fetch cloud sql mssql prebuilt tools yaml")
 	}
+	if len(firestoreconfig) <= 0 {
+		t.Fatalf("unexpected error: could not fetch firestore prebuilt tools yaml")
+	}
+	if len(mysql_config) <= 0 {
+		t.Fatalf("unexpected error: could not fetch mysql prebuilt tools yaml")
+	}
+	if len(mssql_config) <= 0 {
+		t.Fatalf("unexpected error: could not fetch mssql prebuilt tools yaml")
+	}
 	if len(postgresconfig) <= 0 {
 		t.Fatalf("unexpected error: could not fetch postgres prebuilt tools yaml")
 	}
@@ -93,6 +116,9 @@ func TestGetPrebuiltTool(t *testing.T) {
 		t.Fatalf("unexpected error: could not fetch spanner prebuilt tools yaml")
 	}
 	if len(spannerpg_config) <= 0 {
+		t.Fatalf("unexpected error: could not fetch spanner pg prebuilt tools yaml")
+	}
+	if len(mindsdb_config) <= 0 {
 		t.Fatalf("unexpected error: could not fetch spanner pg prebuilt tools yaml")
 	}
 }

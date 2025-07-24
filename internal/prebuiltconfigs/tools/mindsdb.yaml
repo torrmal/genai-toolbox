@@ -41,3 +41,8 @@ tools:
       - name: value
         type: string
         description: Value to match in the WHERE clause 
+
+toolsets:
+  mindsdb-tools:
+      - mindsdb-execute-sql
+      - mindsdb-sql
