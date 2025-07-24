@@ -120,7 +120,6 @@ func (t Tool) Invoke(ctx context.Context, params tools.ParamValues) (any, error)
 	if !ok {
 		return nil, fmt.Errorf("unable to get cast %s", paramsMap["sql"])
 	}
-	}
 
 	results, err := t.Pool.QueryContext(ctx, sql)
 	if err != nil {
