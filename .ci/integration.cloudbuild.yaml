@@ -633,4 +633,4 @@ substitutions:
   _COUCHBASE_SCOPE: "couchbase-scope"
   _LOOKER_VERIFY_SSL: "true"
   _MINDSDB_PORT: "47335"
-  _MINDSDB_DATABASE: "mindsdb-mysql"
+  _MINDSDB_DATABASE: "mindsdb_mysql"
