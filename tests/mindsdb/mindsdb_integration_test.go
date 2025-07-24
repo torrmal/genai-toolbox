@@ -127,7 +127,7 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 
 	var args []string
 
-	pool, err := initMySQLConnectionPool(MindsDBHost, MySQLPort, MySQLUser, MySQLPass, "toolbox")
+	pool, err := initMySQLConnectionPool(MindsDBHost, MySQLPort, MySQLUser, MySQLPass, MySQLDatabase)
 	if err != nil {
 		t.Fatalf("unable to create MindsDB connection pool: %s", err)
 	}
