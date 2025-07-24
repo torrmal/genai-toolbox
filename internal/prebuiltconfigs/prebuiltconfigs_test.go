@@ -32,13 +32,13 @@ func TestLoadPrebuiltToolYAMLs(t *testing.T) {
 		"dataplex",
 		"firestore",
 		"looker",
+		"mindsdb",
 		"mssql",
 		"mysql",
 		"oceanbase",
 		"postgres",
 		"spanner-postgres",
 		"spanner",
-		"mindsdb",
 	}
 	t.Run(test_name, func(t *testing.T) {
 		configsMap, keys, err := loadPrebuiltToolYAMLs()
