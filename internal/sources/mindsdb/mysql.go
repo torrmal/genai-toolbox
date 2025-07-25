@@ -51,7 +51,7 @@ type Config struct {
 	Host         string `yaml:"host" validate:"required"`
 	Port         string `yaml:"port" validate:"required"`
 	User         string `yaml:"user" validate:"required"`
-	Password     string `yaml:"password" validate:"required"`
+	Password     string `yaml:"password"`
 	Database     string `yaml:"database" validate:"required"`
 	QueryTimeout string `yaml:"queryTimeout"`
 }
@@ -98,13 +98,21 @@ func (s *Source) MindsDBPool() *sql.DB {
 func (s *Source) MySQLPool() *sql.DB {
 	return s.Pool
 }
+
 func initMindsDBConnectionPool(ctx context.Context, tracer trace.Tracer, name, host, port, user, pass, dbname, queryTimeout string) (*sql.DB, error) {
 	//nolint:all // Reassigned ctx
 	ctx, span := sources.InitConnectionSpan(ctx, tracer, SourceKind, name)
 	defer span.End()
 
 	// Configure the driver to connect to the database
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, pass, host, port, dbname)
+	var dsn string
+	if pass == "" {
+		// Connect without password
+		dsn = fmt.Sprintf("%s@tcp(%s:%s)/%s?parseTime=true", user, host, port, dbname)
+	} else {
+		// Connect with password
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, pass, host, port, dbname)
+	}
 
 	// Add query timeout to DSN if specified
 	if queryTimeout != "" {
