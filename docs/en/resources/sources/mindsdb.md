@@ -96,7 +96,7 @@ WHERE predicted_churn_probability > 0.8;
 
 ### Database User
 
-This source uses standard MySQL authentication since MindsDB implements the MySQL wire protocol. You will need to [create a MindsDB user][mindsdb-users] to login to the database with.
+This source uses standard MySQL authentication since MindsDB implements the MySQL wire protocol. You will need to [create a MindsDB user][mindsdb-users] to login to the database with. If MindsDB is configured without authentication, you can omit the password field.
 
 [mindsdb-users]: https://docs.mindsdb.com/
 ## Example
@@ -109,7 +109,7 @@ sources:
         port: 3306
         database: my_db
         user: ${USER_NAME}
-        password: ${PASSWORD}
+        password: ${PASSWORD} # Optional: omit if MindsDB is configured without authentication
         queryTimeout: 30s # Optional: query timeout duration
 ```
 
@@ -138,7 +138,7 @@ With MindsDB integration, you can:
 | port         |  string  |     true     | Port to connect to (e.g. "3306").                                                               |
 | database     |  string  |     true     | Name of the MindsDB database to connect to (e.g. "my_db").                                      |
 | user         |  string  |     true     | Name of the MindsDB user to connect as (e.g. "my-mindsdb-user").                                |
-| password     |  string  |     true     | Password of the MindsDB user (e.g. "my-password").                                              |
+| password     |  string  |    false     | Password of the MindsDB user (e.g. "my-password"). Optional if MindsDB is configured without authentication. |
 | queryTimeout |  string  |    false     | Maximum time to wait for query execution (e.g. "30s", "2m"). By default, no timeout is applied. |
 
 ## Resources
