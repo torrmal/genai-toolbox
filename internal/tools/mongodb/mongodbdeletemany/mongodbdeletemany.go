@@ -11,23 +11,25 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package mongodbupdateone
+package mongodbdeletemany
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
 	"github.com/goccy/go-yaml"
-	"github.com/googleapis/genai-toolbox/internal/sources"
 	mongosrc "github.com/googleapis/genai-toolbox/internal/sources/mongodb"
-	"github.com/googleapis/genai-toolbox/internal/tools"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/googleapis/genai-toolbox/internal/sources"
+	"github.com/googleapis/genai-toolbox/internal/tools"
 )
 
-const kind string = "mongodb-update-one"
+const kind string = "mongodb-delete-many"
 
 func init() {
 	if !tools.Register(kind, newConfig) {
@@ -53,11 +55,6 @@ type Config struct {
 	Collection    string           `yaml:"collection" validate:"required"`
 	FilterPayload string           `yaml:"filterPayload" validate:"required"`
 	FilterParams  tools.Parameters `yaml:"filterParams" validate:"required"`
-	UpdatePayload string           `yaml:"updatePayload" validate:"required"`
-	UpdateParams  tools.Parameters `yaml:"updateParams" validate:"required"`
-
-	Canonical bool `yaml:"canonical" validate:"required"`
-	Upsert    bool `yaml:"upsert"`
 }
 
 // validate interface
@@ -81,7 +78,7 @@ func (cfg Config) Initialize(srcs map[string]sources.Source) (tools.Tool, error)
 	}
 
 	// Create a slice for all parameters
-	allParameters := slices.Concat(cfg.FilterParams, cfg.FilterParams, cfg.UpdateParams)
+	allParameters := slices.Concat(cfg.FilterParams)
 
 	// Verify no duplicate parameter names
 	err := tools.CheckDuplicateParameters(allParameters)
@@ -111,10 +108,6 @@ func (cfg Config) Initialize(srcs map[string]sources.Source) (tools.Tool, error)
 		Collection:    cfg.Collection,
 		FilterPayload: cfg.FilterPayload,
 		FilterParams:  cfg.FilterParams,
-		UpdatePayload: cfg.UpdatePayload,
-		UpdateParams:  cfg.UpdateParams,
-		Canonical:     cfg.Canonical,
-		Upsert:        cfg.Upsert,
 		AllParams:     allParameters,
 		database:      s.Client.Database(cfg.Database),
 		manifest:      tools.Manifest{Description: cfg.Description, Parameters: paramManifest, AuthRequired: cfg.AuthRequired},
@@ -126,18 +119,14 @@ func (cfg Config) Initialize(srcs map[string]sources.Source) (tools.Tool, error)
 var _ tools.Tool = Tool{}
 
 type Tool struct {
-	Name          string   `yaml:"name"`
-	Kind          string   `yaml:"kind"`
-	AuthRequired  []string `yaml:"authRequired"`
-	Description   string   `yaml:"description"`
-	Collection    string   `yaml:"collection"`
-	FilterPayload string   `yaml:"filterPayload" validate:"required"`
-	FilterParams  tools.Parameters
-	UpdatePayload string `yaml:"updatePayload" validate:"required"`
-	UpdateParams  tools.Parameters
-	AllParams     tools.Parameters
-	Canonical     bool `yaml:"canonical" validation:"required"`
-	Upsert        bool `yaml:"upsert"`
+	Name          string           `yaml:"name"`
+	Kind          string           `yaml:"kind"`
+	AuthRequired  []string         `yaml:"authRequired"`
+	Description   string           `yaml:"description"`
+	Collection    string           `yaml:"collection"`
+	FilterPayload string           `yaml:"filterPayload"`
+	FilterParams  tools.Parameters `yaml:"filterParams"`
+	AllParams     tools.Parameters `yaml:"allParams"`
 
 	database    *mongo.Database
 	manifest    tools.Manifest
@@ -147,34 +136,30 @@ type Tool struct {
 func (t Tool) Invoke(ctx context.Context, params tools.ParamValues) (any, error) {
 	paramsMap := params.AsMap()
 
-	filterString, err := tools.PopulateTemplateWithJSON("MongoDBUpdateOneFilter", t.FilterPayload, paramsMap)
+	filterString, err := tools.PopulateTemplateWithJSON("MongoDBDeleteManyFilter", t.FilterPayload, paramsMap)
 	if err != nil {
 		return nil, fmt.Errorf("error populating filter: %s", err)
 	}
 
+	opts := options.Delete()
+
 	var filter = bson.D{}
 	err = bson.UnmarshalExtJSON([]byte(filterString), false, &filter)
 	if err != nil {
-		return nil, fmt.Errorf("unable to unmarshal filter string: %w", err)
+		return nil, err
 	}
 
-	updateString, err := tools.PopulateTemplateWithJSON("MongoDBUpdateOne", t.UpdatePayload, paramsMap)
+	res, err := t.database.Collection(t.Collection).DeleteMany(ctx, filter, opts)
 	if err != nil {
-		return nil, fmt.Errorf("unable to get update: %w", err)
+		return nil, err
 	}
 
-	var update = bson.D{}
-	err = bson.UnmarshalExtJSON([]byte(updateString), t.Canonical, &update)
-	if err != nil {
-		return nil, fmt.Errorf("unable to unmarshal update string: %w", err)
+	if res.DeletedCount == 0 {
+		return nil, errors.New("no document found")
 	}
 
-	res, err := t.database.Collection(t.Collection).UpdateOne(ctx, filter, update, options.Update().SetUpsert(t.Upsert))
-	if err != nil {
-		return nil, fmt.Errorf("error updating collection: %w", err)
-	}
-
-	return res.ModifiedCount, nil
+	// not much to return actually
+	return res.DeletedCount, nil
 }
 
 func (t Tool) ParseParams(data map[string]any, claims map[string]map[string]any) (tools.ParamValues, error) {

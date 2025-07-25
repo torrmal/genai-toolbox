@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package mssql_test
+package dataplex_test
 
 import (
 	"testing"
@@ -20,11 +20,11 @@ import (
 	yaml "github.com/goccy/go-yaml"
 	"github.com/google/go-cmp/cmp"
 	"github.com/googleapis/genai-toolbox/internal/server"
-	"github.com/googleapis/genai-toolbox/internal/sources/mssql"
+	"github.com/googleapis/genai-toolbox/internal/sources/dataplex"
 	"github.com/googleapis/genai-toolbox/internal/testutils"
 )
 
-func TestParseFromYamlMssql(t *testing.T) {
+func TestParseFromYamlDataplex(t *testing.T) {
 	tcs := []struct {
 		desc string
 		in   string
@@ -34,49 +34,15 @@ func TestParseFromYamlMssql(t *testing.T) {
 			desc: "basic example",
 			in: `
 			sources:
-				my-mssql-instance:
-					kind: mssql
-					host: 0.0.0.0
-					port: my-port
-					database: my_db
-					user: my_user
-					password: my_pass
+				my-instance:
+					kind: dataplex
+					project: my-project
 			`,
 			want: server.SourceConfigs{
-				"my-mssql-instance": mssql.Config{
-					Name:     "my-mssql-instance",
-					Kind:     mssql.SourceKind,
-					Host:     "0.0.0.0",
-					Port:     "my-port",
-					Database: "my_db",
-					User:     "my_user",
-					Password: "my_pass",
-				},
-			},
-		},
-		{
-			desc: "with encrypt field",
-			in: `
-			sources:
-				my-mssql-instance:
-					kind: mssql
-					host: 0.0.0.0
-					port: my-port
-					database: my_db
-					user: my_user
-					password: my_pass
-					encrypt: strict
-			`,
-			want: server.SourceConfigs{
-				"my-mssql-instance": mssql.Config{
-					Name:     "my-mssql-instance",
-					Kind:     mssql.SourceKind,
-					Host:     "0.0.0.0",
-					Port:     "my-port",
-					Database: "my_db",
-					User:     "my_user",
-					Password: "my_pass",
-					Encrypt:  "strict",
+				"my-instance": dataplex.Config{
+					Name:    "my-instance",
+					Kind:    dataplex.SourceKind,
+					Project: "my-project",
 				},
 			},
 		},
@@ -92,10 +58,11 @@ func TestParseFromYamlMssql(t *testing.T) {
 				t.Fatalf("unable to unmarshal: %s", err)
 			}
 			if !cmp.Equal(tc.want, got.Sources) {
-				t.Fatalf("incorrect psarse: want %v, got %v", tc.want, got.Sources)
+				t.Fatalf("incorrect parse: want %v, got %v", tc.want, got.Sources)
 			}
 		})
 	}
+
 }
 
 func TestFailParseFromYaml(t *testing.T) {
@@ -108,29 +75,21 @@ func TestFailParseFromYaml(t *testing.T) {
 			desc: "extra field",
 			in: `
 			sources:
-				my-mssql-instance:
-					kind: mssql
-					host: 0.0.0.0
-					port: my-port
-					database: my_db
-					user: my_user
-					password: my_pass
+				my-instance:
+					kind: dataplex
+					project: my-project
 					foo: bar
 			`,
-			err: "unable to parse source \"my-mssql-instance\" as \"mssql\": [2:1] unknown field \"foo\"\n   1 | database: my_db\n>  2 | foo: bar\n       ^\n   3 | host: 0.0.0.0\n   4 | kind: mssql\n   5 | password: my_pass\n   6 | ",
+			err: "unable to parse source \"my-instance\" as \"dataplex\": [1:1] unknown field \"foo\"\n>  1 | foo: bar\n       ^\n   2 | kind: dataplex\n   3 | project: my-project",
 		},
 		{
 			desc: "missing required field",
 			in: `
 			sources:
-				my-mssql-instance:
-					kind: mssql
-					host: 0.0.0.0
-					port: my-port
-					database: my_db
-					user: my_user
+				my-instance:
+					kind: dataplex
 			`,
-			err: "unable to parse source \"my-mssql-instance\" as \"mssql\": Key: 'Config.Password' Error:Field validation for 'Password' failed on the 'required' tag",
+			err: "unable to parse source \"my-instance\" as \"dataplex\": Key: 'Config.Project' Error:Field validation for 'Project' failed on the 'required' tag",
 		},
 	}
 	for _, tc := range tcs {

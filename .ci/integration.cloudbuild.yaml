@@ -153,6 +153,26 @@ steps:
           "BigQuery" \
           bigquery \
           bigquery
+  
+  - id: "dataplex"
+    name: golang:1
+    waitFor: ["compile-test-binary"]
+    entrypoint: /bin/bash
+    env:
+      - "GOPATH=/gopath"
+      - "DATAPLEX_PROJECT=$PROJECT_ID"
+      - "SERVICE_ACCOUNT_EMAIL=$SERVICE_ACCOUNT_EMAIL"
+    secretEnv: ["CLIENT_ID"]
+    volumes:
+      - name: "go"
+        path: "/gopath"
+    args:
+      - -c
+      - |
+        .ci/test_with_coverage.sh \
+          "Dataplex" \
+          dataplex \
+          dataplex
 
   - id: "postgres"
     name: golang:1
@@ -605,5 +625,8 @@ substitutions:
   _COUCHBASE_BUCKET: "couchbase-bucket"
   _COUCHBASE_SCOPE: "couchbase-scope"
   _LOOKER_VERIFY_SSL: "true"
+  _MINDSDB_PORT: "47335"
+  _MINDSDB_DATABASE: "mindsdb_mysql"
+
   _MINDSDB_PORT: "47335"
   _MINDSDB_DATABASE: "mindsdb"

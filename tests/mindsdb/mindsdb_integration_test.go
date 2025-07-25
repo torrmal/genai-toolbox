@@ -37,6 +37,11 @@ var (
 	MindsDBPort       = os.Getenv("MINDSDB_PORT")
 	MindsDBUser       = os.Getenv("MINDSDB_USER")
 	MindsDBPass       = os.Getenv("MINDSDB_PASS")
+	MySQLPort         = os.Getenv("MYSQL_PORT")
+	MySQLUser         = os.Getenv("MINDSDB_MYSQL_USER")
+	MySQLPass         = os.Getenv("MINDSDB_MYSQL_PASS")
+	MySQLDatabase     = os.Getenv("MYSQL_DATABASE")
+	MySQLHost         = "mysql-server"
 )
 
 func getMindsDBVars(t *testing.T) map[string]any {
@@ -51,6 +56,12 @@ func getMindsDBVars(t *testing.T) map[string]any {
 		t.Fatal("'MINDSDB_USER' not set")
 	case MindsDBPass:
 		t.Fatal("'MINDSDB_PASS' not set")
+	case MySQLUser:
+		t.Fatal("'MYSQL_USER' not set")
+	case MySQLPass:
+		t.Fatal("'MYSQL_PASS' not set")
+	case MySQLDatabase:
+		t.Fatal("'MYSQL_DATABASE' not set")
 	}
 
 	return map[string]any{
@@ -63,11 +74,9 @@ func getMindsDBVars(t *testing.T) map[string]any {
 	}
 }
 
-// Copied over from mindsdb.go
-func initMindsDBConnectionPool(host, port, user, pass, dbname string) (*sql.DB, error) {
+// Copied over from mysql.go
+func initMySQLConnectionPool(host, port, user, pass, dbname string) (*sql.DB, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, pass, host, port, dbname)
-
-	// Interact with the driver directly as you normally would
 	pool, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("sql.Open: %w", err)
@@ -75,14 +84,50 @@ func initMindsDBConnectionPool(host, port, user, pass, dbname string) (*sql.DB, 
 	return pool, nil
 }
 
+func setupMindsDBIntegration(t *testing.T, ctx context.Context) {
+	// Connect to mindsdb's own `mindsdb` database to run CREATE DATABASE.
+	mindsdbPool, err := initMySQLConnectionPool(MindsDBHost, MindsDBPort, MindsDBUser, MindsDBPass, "mindsdb")
+	if err != nil {
+		t.Fatalf("unable to connect to mindsdb for setup: %s", err)
+	}
+	defer mindsdbPool.Close()
+
+	// The SQL command to connect MindsDB to the MySQL test database.
+	createStatement := fmt.Sprintf(`
+        CREATE DATABASE IF NOT EXISTS %s
+        WITH ENGINE = 'mysql',
+        PARAMETERS = {
+            "user": "%s",
+            "password": "%s",
+            "host": "%s",
+            "port": %s,
+            "database": "%s"
+        }`, MindsDBDatabase, MySQLUser, MySQLPass, MySQLHost, MySQLPort, MySQLDatabase)
+
+	_, err = mindsdbPool.ExecContext(ctx, createStatement)
+	if err != nil {
+		t.Fatalf("failed to create mindsdb integration: %v", err)
+	}
+
+	// Clean up
+	t.Cleanup(func() {
+		dropStatement := fmt.Sprintf("DROP DATABASE %s", MindsDBDatabase)
+		_, err := mindsdbPool.ExecContext(context.Background(), dropStatement)
+		if err != nil {
+			t.Logf("failed to drop mindsdb integration, may require manual cleanup: %v", err)
+		}
+	})
+}
 func TestMindsDBToolEndpoints(t *testing.T) {
 	sourceConfig := getMindsDBVars(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
+	setupMindsDBIntegration(t, ctx)
+
 	var args []string
 
-	pool, err := initMindsDBConnectionPool(MindsDBHost, MindsDBPort, MindsDBUser, MindsDBPass, MindsDBDatabase)
+	pool, err := initMySQLConnectionPool(MindsDBHost, MySQLPort, MySQLUser, MySQLPass, MySQLDatabase)
 	if err != nil {
 		t.Fatalf("unable to create MindsDB connection pool: %s", err)
 	}
