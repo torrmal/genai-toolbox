@@ -41,6 +41,7 @@ var (
 	MySQLUser         = os.Getenv("MINDSDB_MYSQL_USER")
 	MySQLPass         = os.Getenv("MINDSDB_MYSQL_PASS")
 	MySQLDatabase     = os.Getenv("MYSQL_DATABASE")
+	MySQLHost         = "mysql-server"
 )
 
 func getMindsDBVars(t *testing.T) map[string]any {
@@ -101,7 +102,7 @@ func setupMindsDBIntegration(t *testing.T, ctx context.Context) {
             "host": "%s",
             "port": %s,
             "database": "%s"
-        }`, MindsDBDatabase, MySQLUser, MySQLPass, MindsDBHost, MySQLPort, MySQLDatabase)
+        }`, MindsDBDatabase, MySQLUser, MySQLPass, MySQLHost, MySQLPort, MySQLDatabase)
 
 	_, err = mindsdbPool.ExecContext(ctx, createStatement)
 	if err != nil {
