@@ -99,7 +99,7 @@ func setupMindsDBIntegration(t *testing.T, ctx context.Context) {
             "user": "%s",
             "password": "%s",
             "host": "%s",
-            "port": %d,
+            "port": %s,
             "database": "%s"
         }`, MindsDBDatabase, MySQLUser, MySQLPass, MindsDBHost, MySQLPort, MySQLDatabase)
 
