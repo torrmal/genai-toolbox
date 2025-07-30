@@ -90,4 +90,27 @@ FROM customer_churn_model
 WHERE predicted_churn_probability > 0.8;
 ```
 
-Since MindsDB implements the MySQL wire protocol, these tools are functionally compatible with MySQL tools while providing access to MindsDB's advanced federated database capabilities. 
+Since MindsDB implements the MySQL wire protocol, these tools are functionally compatible with MySQL tools while providing access to MindsDB's advanced federated database capabilities.
+
+## Working Configuration Example
+
+Here's a complete working configuration that has been tested:
+
+```yaml
+sources:
+  my-pg-source:
+    kind: mindsdb
+    host: 127.0.0.1
+    port: 47335
+    database: files
+    user: mindsdb
+
+tools:
+  mindsdb-execute-sql:
+    kind: mindsdb-execute-sql
+    source: my-pg-source
+    description: |
+      Execute SQL queries directly on MindsDB database.
+      Use this tool to run any SQL statement against your MindsDB instance.
+      Example: SELECT * FROM my_table LIMIT 10
+``` 
