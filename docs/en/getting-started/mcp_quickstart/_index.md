@@ -105,7 +105,7 @@ In this section, we will download Toolbox, configure our tools in a
     <!-- {x-release-please-start-version} -->
     ```bash
     export OS="linux/amd64" # one of linux/amd64, darwin/arm64, darwin/amd64, or windows/amd64
-    curl -O https://storage.googleapis.com/genai-toolbox/v0.9.0/$OS/toolbox
+    curl -O https://storage.googleapis.com/genai-toolbox/v0.10.0/$OS/toolbox
     ```
     <!-- {x-release-please-end} -->
 
@@ -218,7 +218,8 @@ In this section, we will download Toolbox, configure our tools in a
 
 1. Type `y` when it asks to install the inspector package.
 
-1. It should show the following when the MCP Inspector is up and running (please take note of `<YOUR_SESSION_TOKEN>`):
+1. It should show the following when the MCP Inspector is up and running (please
+   take note of `<YOUR_SESSION_TOKEN>`):
 
     ```bash
     Starting MCP inspector...
@@ -236,7 +237,8 @@ In this section, we will download Toolbox, configure our tools in a
 
 1. For `URL`, type in `http://127.0.0.1:5000/mcp`.
 
-1. For `Configuration` -> `Proxy Session Token`, make sure `<YOUR_SESSION_TOKEN>` is present.
+1. For `Configuration` -> `Proxy Session Token`, make sure
+   `<YOUR_SESSION_TOKEN>` is present.
 
 1. Click Connect.
 
