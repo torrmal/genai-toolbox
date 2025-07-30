@@ -113,6 +113,20 @@ sources:
         queryTimeout: 30s # Optional: query timeout duration
 ```
 
+### Working Configuration Example
+
+Here's a working configuration that has been tested:
+
+```yaml
+sources:
+  my-pg-source:
+    kind: mindsdb
+    host: 127.0.0.1
+    port: 47335
+    database: files
+    user: mindsdb
+```
+
 {{< notice tip >}}
 Use environment variable replacement with the format ${ENV_NAME}
 instead of hardcoding your secrets into the configuration file.
