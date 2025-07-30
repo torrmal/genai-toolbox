@@ -94,6 +94,29 @@ tools:
     description: Use this tool to execute SQL statements across multiple datasources and ML models.
 ```
 
+### Working Configuration Example
+
+Here's a working configuration that has been tested:
+
+```yaml
+sources:
+  my-pg-source:
+    kind: mindsdb
+    host: 127.0.0.1
+    port: 47335
+    database: files
+    user: mindsdb
+
+tools:
+  mindsdb-execute-sql:
+    kind: mindsdb-execute-sql
+    source: my-pg-source
+    description: |
+      Execute SQL queries directly on MindsDB database.
+      Use this tool to run any SQL statement against your MindsDB instance.
+      Example: SELECT * FROM my_table LIMIT 10
+```
+
 ## Reference
 
 | **field**   |                  **type**                  | **required** | **description**                                                                                  |
