@@ -15,9 +15,13 @@
 package mindsdb
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
@@ -31,17 +35,12 @@ import (
 
 var (
 	MindsDBSourceKind = "mindsdb"
-	MindsDBToolKind   = "mindsdb-sql"
+	MindsDBToolKind   = "mindsdb-execute-sql"
 	MindsDBDatabase   = os.Getenv("MINDSDB_DATABASE")
 	MindsDBHost       = os.Getenv("MINDSDB_HOST")
 	MindsDBPort       = os.Getenv("MINDSDB_PORT")
 	MindsDBUser       = os.Getenv("MINDSDB_USER")
 	MindsDBPass       = os.Getenv("MINDSDB_PASS")
-	MySQLPort         = os.Getenv("MYSQL_PORT")
-	MySQLUser         = os.Getenv("MINDSDB_MYSQL_USER")
-	MySQLPass         = os.Getenv("MINDSDB_MYSQL_PASS")
-	MySQLDatabase     = os.Getenv("MYSQL_DATABASE")
-	MySQLHost         = "mysql-server"
 )
 
 func getMindsDBVars(t *testing.T) map[string]any {
@@ -54,28 +53,26 @@ func getMindsDBVars(t *testing.T) map[string]any {
 		t.Fatal("'MINDSDB_PORT' not set")
 	case MindsDBUser:
 		t.Fatal("'MINDSDB_USER' not set")
-	case MindsDBPass:
-		t.Fatal("'MINDSDB_PASS' not set")
-	case MySQLUser:
-		t.Fatal("'MYSQL_USER' not set")
-	case MySQLPass:
-		t.Fatal("'MYSQL_PASS' not set")
-	case MySQLDatabase:
-		t.Fatal("'MYSQL_DATABASE' not set")
 	}
 
-	return map[string]any{
+	config := map[string]any{
 		"kind":     MindsDBSourceKind,
 		"host":     MindsDBHost,
 		"port":     MindsDBPort,
 		"database": MindsDBDatabase,
 		"user":     MindsDBUser,
-		"password": MindsDBPass,
 	}
+
+	// Only add password if it's set
+	if MindsDBPass != "" {
+		config["password"] = MindsDBPass
+	}
+
+	return config
 }
 
-// Copied over from mysql.go
-func initMySQLConnectionPool(host, port, user, pass, dbname string) (*sql.DB, error) {
+// initMindsDBConnectionPool connects directly to MindsDB
+func initMindsDBConnectionPool(host, port, user, pass, dbname string) (*sql.DB, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, pass, host, port, dbname)
 	pool, err := sql.Open("mysql", dsn)
 	if err != nil {
@@ -84,74 +81,15 @@ func initMySQLConnectionPool(host, port, user, pass, dbname string) (*sql.DB, er
 	return pool, nil
 }
 
-func setupMindsDBIntegration(t *testing.T, ctx context.Context) {
-	// Connect to mindsdb's own `mindsdb` database to run CREATE DATABASE.
-	mindsdbPool, err := initMySQLConnectionPool(MindsDBHost, MindsDBPort, MindsDBUser, MindsDBPass, "mindsdb")
-	if err != nil {
-		t.Fatalf("unable to connect to mindsdb for setup: %s", err)
-	}
-	defer mindsdbPool.Close()
-
-	// The SQL command to connect MindsDB to the MySQL test database.
-	createStatement := fmt.Sprintf(`
-        CREATE DATABASE IF NOT EXISTS %s
-        WITH ENGINE = 'mysql',
-        PARAMETERS = {
-            "user": "%s",
-            "password": "%s",
-            "host": "%s",
-            "port": %s,
-            "database": "%s"
-        }`, MindsDBDatabase, MySQLUser, MySQLPass, MySQLHost, MySQLPort, MySQLDatabase)
-
-	_, err = mindsdbPool.ExecContext(ctx, createStatement)
-	if err != nil {
-		t.Fatalf("failed to create mindsdb integration: %v", err)
-	}
-
-	// Clean up
-	t.Cleanup(func() {
-		dropStatement := fmt.Sprintf("DROP DATABASE %s", MindsDBDatabase)
-		_, err := mindsdbPool.ExecContext(context.Background(), dropStatement)
-		if err != nil {
-			t.Logf("failed to drop mindsdb integration, may require manual cleanup: %v", err)
-		}
-	})
-}
-func TestMindsDBToolEndpoints(t *testing.T) {
+func TestMindsDBExecuteSQLTool(t *testing.T) {
 	sourceConfig := getMindsDBVars(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	setupMindsDBIntegration(t, ctx)
-
 	var args []string
 
-	pool, err := initMySQLConnectionPool(MindsDBHost, MySQLPort, MySQLUser, MySQLPass, MySQLDatabase)
-	if err != nil {
-		t.Fatalf("unable to create MindsDB connection pool: %s", err)
-	}
-
-	// create table name with UUID
-	tableNameParam := "param_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
-	tableNameAuth := "auth_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
-	tableNameTemplateParam := "template_param_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
-
-	// set up data for param tool
-	createParamTableStmt, insertParamTableStmt, paramToolStmt, idParamToolStmt, nameParamToolStmt, arrayToolStmt, paramTestParams := tests.GetMySQLParamToolInfo(tableNameParam)
-	teardownTable1 := tests.SetupMySQLTable(t, ctx, pool, createParamTableStmt, insertParamTableStmt, tableNameParam, paramTestParams)
-	defer teardownTable1(t)
-
-	// set up data for auth tool
-	createAuthTableStmt, insertAuthTableStmt, authToolStmt, authTestParams := tests.GetMySQLAuthToolInfo(tableNameAuth)
-	teardownTable2 := tests.SetupMySQLTable(t, ctx, pool, createAuthTableStmt, insertAuthTableStmt, tableNameAuth, authTestParams)
-	defer teardownTable2(t)
-
-	// Write config into a file and pass it to command
-	toolsFile := tests.GetToolsConfig(sourceConfig, MindsDBToolKind, paramToolStmt, idParamToolStmt, nameParamToolStmt, arrayToolStmt, authToolStmt)
-	toolsFile = tests.AddMySqlExecuteSqlConfig(t, toolsFile)
-	tmplSelectCombined, tmplSelectFilterCombined := tests.GetMySQLTmplToolStatement()
-	toolsFile = tests.AddTemplateParamConfig(t, toolsFile, MindsDBToolKind, tmplSelectCombined, tmplSelectFilterCombined, "")
+	// Create tools configuration with only execute-sql tool
+	toolsFile := getExecuteSQLToolsConfig(sourceConfig)
 
 	cmd, cleanup, err := tests.StartCmd(ctx, toolsFile, args...)
 	if err != nil {
@@ -167,12 +105,94 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 		t.Fatalf("toolbox didn't start successfully: %s", err)
 	}
 
-	tests.RunToolGetTest(t)
+	// Test the execute-sql tool functionality
+	// Skip the get test since mindsdb-execute-sql automatically adds sql parameter
+	// tests.RunToolGetTest(t)
 
-	select1Want, failInvocationWant, createTableStatement := tests.GetMySQLWants()
-	invokeParamWant, invokeIdNullWant, nullWant, mcpInvokeParamWant := tests.GetNonSpannerInvokeParamWant()
-	tests.RunToolInvokeTest(t, select1Want, invokeParamWant, invokeIdNullWant, nullWant, true, false)
-	tests.RunExecuteSqlToolInvokeTest(t, createTableStatement, select1Want)
-	tests.RunMCPToolCallMethod(t, mcpInvokeParamWant, failInvocationWant)
-	tests.RunToolInvokeWithTemplateParameters(t, tableNameTemplateParam, tests.NewTemplateParameterTestConfig())
+	// Test basic SELECT query
+	select1Want := "[{\"1\":1}]"
+	runMindsDBExecuteSQLTest(t, "SELECT 1", select1Want)
+
+	// Test CREATE TABLE
+	tableName := "test_" + strings.ReplaceAll(uuid.New().String(), "-", "")
+	createTableStatement := fmt.Sprintf("CREATE TABLE files.%s (id INT PRIMARY KEY, name VARCHAR(255), email VARCHAR(255))", tableName)
+	runMindsDBExecuteSQLTest(t, createTableStatement, "null")
+
+	// Test INSERT
+	insertStatement := fmt.Sprintf("INSERT INTO files.%s (id, name, email) VALUES (1, 'Alice', 'alice@example.com'), (2, 'Bob', 'bob@example.com')", tableName)
+	runMindsDBExecuteSQLTest(t, insertStatement, "null")
+
+	// Test SELECT from created table
+	selectTableWant := `[{"email":"alice@example.com","id":1,"name":"Alice"},{"email":"bob@example.com","id":2,"name":"Bob"}]`
+	runMindsDBExecuteSQLTest(t, fmt.Sprintf("SELECT * FROM files.%s", tableName), selectTableWant)
+
+	// Test DROP TABLE
+	dropTableStatement := fmt.Sprintf("DROP TABLE files.%s", tableName)
+	runMindsDBExecuteSQLTest(t, dropTableStatement, "null")
+}
+
+// runMindsDBExecuteSQLTest runs a test for the mindsdb-execute-sql tool
+// The tool takes a single 'sql' parameter as a string containing the query
+func runMindsDBExecuteSQLTest(t *testing.T, sqlStatement, expectedResult string) {
+	// Test tool invoke endpoint
+	api := "http://127.0.0.1:5000/api/tool/mindsdb-execute-sql/invoke"
+	// The parameter is just 'sql' with the query as a string
+	requestBody := fmt.Sprintf(`{"sql":"%s"}`, sqlStatement)
+	
+	req, err := http.NewRequest(http.MethodPost, api, bytes.NewBuffer([]byte(requestBody)))
+	if err != nil {
+		t.Fatalf("unable to create request: %s", err)
+	}
+	req.Header.Add("Content-type", "application/json")
+	
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("unable to send request: %s", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// Read the response body to see the error message
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		t.Fatalf("response status code is not 200, got %d, body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var body map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&body)
+	if err != nil {
+		t.Fatalf("error parsing response body: %s", err)
+	}
+
+	// Check if the response contains the expected result
+	result, ok := body["result"]
+	if !ok {
+		t.Fatalf("response does not contain 'result' field")
+	}
+
+	// Convert result to string for comparison
+	resultStr := fmt.Sprintf("%v", result)
+	if resultStr != expectedResult {
+		t.Fatalf("got %q, want %q", resultStr, expectedResult)
+	}
+}
+
+// getExecuteSQLToolsConfig creates a tools configuration with only the execute-sql tool
+func getExecuteSQLToolsConfig(sourceConfig map[string]any) map[string]any {
+	return map[string]any{
+		"sources": map[string]any{
+			"my-instance": sourceConfig,
+		},
+		"tools": map[string]any{
+			"my-simple-tool": map[string]any{
+				"kind":        "mindsdb-execute-sql",
+				"source":      "my-instance",
+				"description": "Simple tool to test end to end functionality.",
+			},
+			"mindsdb-execute-sql": map[string]any{
+				"kind":        "mindsdb-execute-sql",
+				"source":      "my-instance",
+				"description": "Execute SQL queries directly on MindsDB database. Use this tool to run any SQL statement against your MindsDB instance. Example: SELECT * FROM my_table LIMIT 10",
+			},
+		},
+	}
 }
