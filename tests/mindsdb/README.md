@@ -4,7 +4,18 @@ This directory contains a focused MindsDB integration test that demonstrates tes
 
 ## Test Overview
 
-The `mindsdb_integration_test.go` file tests the `mindsdb-execute-sql` tool with the following SQL operations:
+The `mindsdb_integration_test.go` file contains two comprehensive tests:
+
+### TestMindsDBToolEndpoints
+Tests the generic tool functionality including:
+- Tool GET endpoints
+- Basic tool invocation
+- Parameterized tool invocation (mindsdb-sql tool)
+- Execute SQL tool functionality
+- Auth features and edge cases
+
+### TestMindsDBExecuteSQLTool  
+Tests the `mindsdb-execute-sql` tool with the following SQL operations:
 
 1. **CREATE TABLE** - Creates a test table in the files schema
 2. **INSERT** - Adds test data to the table
@@ -49,8 +60,8 @@ dropTableStatement := fmt.Sprintf(`"DROP TABLE files.%s"`, tableName)
 
 Required environment variables:
 ```bash
-export MINDSDB_DATABASE="mindsdb"
-export MINDSDB_HOST="localhost"
+export MINDSDB_DATABASE="files"
+export MINDSDB_HOST="127.0.0.1"
 export MINDSDB_PORT="47335"
 export MINDSDB_USER="mindsdb"
 ```
@@ -135,8 +146,8 @@ The MindsDB files schema supports the following SQL operations:
 
 ```bash
 # Set required environment variables
-export MINDSDB_DATABASE="mindsdb"
-export MINDSDB_HOST="localhost"
+export MINDSDB_DATABASE="files"
+export MINDSDB_HOST="127.0.0.1"
 export MINDSDB_PORT="47335"
 export MINDSDB_USER="mindsdb"
 
@@ -144,4 +155,4 @@ export MINDSDB_USER="mindsdb"
 go test ./tests/mindsdb -v
 ```
 
-The test will create a temporary table, perform various SQL operations on it, and clean up afterward, providing comprehensive validation of the `mindsdb-execute-sql` tool functionality. 
+The test will create temporary tables, perform various SQL operations on them, and clean up afterward, providing comprehensive validation of both the `mindsdb-execute-sql` tool and the generic test functionality including auth features and edge cases. 
