@@ -94,7 +94,7 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	tableNameAuth := "auth_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 
 	// set up data for param tool
-	_, _, paramToolStmt, idParamToolStmt, nameParamToolStmt, arrayToolStmt, _ := getMindsDBParamToolInfo(tableNameParam)
+	createParamTableStmt, insertParamTableStmt, paramToolStmt, idParamToolStmt, nameParamToolStmt, arrayToolStmt, _ := getMindsDBParamToolInfo(tableNameParam)
 
 	// set up data for auth tool
 	_, _, authToolStmt, _ := getMindsDBAuthToolInfo(tableNameAuth)
@@ -142,8 +142,17 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 		},
 	})
 
-	// Test parameterized tool invocation - skip for now due to MindsDB compatibility issues
-	// tests.RunToolInvokeParametersTest(t, "my-tool", []byte(`{"id": 1, "name": "Alice"}`), "[{\"id\":1,\"name\":\"Alice\",\"email\":\"alice@example.com\"}]")
+	// Create the table and insert data for parameterized tests
+	t.Logf("Setting up table for parameterized tests: %s", tableNameParam)
+	runSQLTest(t, createParamTableStmt, "null")
+	runSQLTest(t, insertParamTableStmt, "null")
+
+	// Test parameterized tool invocation - try with MindsDB compatibility
+	// Use the execute-sql tool with a parameterized query
+	runSQLTest(t, fmt.Sprintf("SELECT * FROM files.%s WHERE id = 1", tableNameParam), "[{\"email\":\"alice@example.com\",\"id\":1,\"name\":\"Alice\"}]")
+
+	// Clean up the table
+	runSQLTest(t, fmt.Sprintf("DROP TABLE files.%s", tableNameParam), "null")
 }
 
 func TestMindsDBExecuteSQLTool(t *testing.T) {
