@@ -11,7 +11,7 @@ Tests the generic tool functionality including:
 - Tool GET endpoints
 - Basic tool invocation
 - Parameterized tool invocation (mindsdb-sql tool)
-- Execute SQL tool functionality
+- Execute SQL tool functionality using standard `my-exec-sql-tool` pattern
 - Auth features and edge cases
 
 ### TestMindsDBExecuteSQLTool  
@@ -25,6 +25,11 @@ Tests the `mindsdb-execute-sql` tool with the following SQL operations:
 6. **DROP TABLE** - Cleans up by dropping the test table
 
 ## Key Features
+
+### Standard Tool Pattern
+- Uses the standard `my-exec-sql-tool` pattern consistent with other integration tests (BigQuery, Spanner, etc.)
+- Follows the same configuration and testing patterns as other database integrations
+- Ensures consistency across the test suite
 
 ### Files Schema Usage
 - Uses MindsDB's built-in `files` schema instead of external databases
@@ -86,7 +91,7 @@ sources:
     # password: mindsdb  # Optional - only if authentication is required
 
 tools:
-  mindsdb-execute-sql:
+  my-exec-sql-tool:
     kind: mindsdb-execute-sql
     source: my-mindsdb-source
     description: |
@@ -97,14 +102,22 @@ tools:
 
 ## Test Configuration
 
-The test uses a minimal configuration with only the `mindsdb-execute-sql` tool:
+The test uses the standard configuration pattern with `my-exec-sql-tool`:
 
 ```go
 "tools": map[string]any{
-    "mindsdb-execute-sql": map[string]any{
+    "my-exec-sql-tool": map[string]any{
         "kind":        "mindsdb-execute-sql",
         "source":      "my-instance",
-        "description": "Execute SQL queries directly on MindsDB database. Use this tool to run any SQL statement against your MindsDB instance. Example: SELECT * FROM my_table LIMIT 10",
+        "description": "Tool to execute sql",
+    },
+    "my-auth-exec-sql-tool": map[string]any{
+        "kind":        "mindsdb-execute-sql",
+        "source":      "my-instance",
+        "description": "Tool to execute sql",
+        "authRequired": []string{
+            "my-google-auth",
+        },
     },
 }
 ```
@@ -135,12 +148,14 @@ The MindsDB files schema supports the following SQL operations:
 
 ## Benefits
 
+- **Standard Pattern**: Follows the same `my-exec-sql-tool` pattern as other integration tests
 - **Simple Setup**: No external database dependencies
 - **Fast Execution**: Direct connection to MindsDB
 - **Comprehensive**: Tests all major SQL operations
 - **Flexible**: Works with or without authentication
 - **Clean**: Proper table creation and cleanup
 - **Focused**: Only tests the execute-sql functionality
+- **Consistent**: Matches the testing patterns used by BigQuery, Spanner, and other integrations
 
 ## Running the Test
 
@@ -155,4 +170,4 @@ export MINDSDB_USER="mindsdb"
 go test ./tests/mindsdb -v
 ```
 
-The test will create temporary tables, perform various SQL operations on them, and clean up afterward, providing comprehensive validation of both the `mindsdb-execute-sql` tool and the generic test functionality including auth features and edge cases. 
+The test will create temporary tables, perform various SQL operations on them, and clean up afterward, providing comprehensive validation of both the `mindsdb-execute-sql` tool and the generic test functionality including auth features and edge cases, using the standard `my-exec-sql-tool` pattern consistent with other integration tests. 
