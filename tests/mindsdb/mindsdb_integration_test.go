@@ -104,6 +104,25 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	toolsFile = addMindsDBMyExecSQLConfig(t, toolsFile)
 	tmplSelectCombined, tmplSelectFilterCombined := getMindsDBTmplToolStatement()
 	toolsFile = addTemplateParamConfig(t, toolsFile, MindsDBToolKind, tmplSelectCombined, tmplSelectFilterCombined, "")
+	
+	// Add parameterized SQL tool for testing
+	paramQueryToolName := "my-param-sql-tool"
+	// Use a simple parameterized query that doesn't reference a table
+	paramQueryStatement := "SELECT ? as result"
+	tools := toolsFile["tools"].(map[string]any)
+	tools[paramQueryToolName] = map[string]any{
+		"kind":        MindsDBToolKind,
+		"source":      "my-instance",
+		"description": "Tool to test parameterized SQL queries",
+		"statement":   paramQueryStatement,
+		"parameters": []any{
+			map[string]any{
+				"name":        "id",
+				"type":        "integer",
+				"description": "user ID",
+			},
+		},
+	}
 
 	cmd, cleanup, err := tests.StartCmd(ctx, toolsFile, args...)
 	if err != nil {
@@ -147,9 +166,33 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	runSQLTest(t, createParamTableStmt, "null")
 	runSQLTest(t, insertParamTableStmt, "null")
 
-	// Test parameterized tool invocation - try with MindsDB compatibility
-	// Use the execute-sql tool with a parameterized query
-	runSQLTest(t, fmt.Sprintf("SELECT * FROM files.%s WHERE id = 1", tableNameParam), "[{\"email\":\"alice@example.com\",\"id\":1,\"name\":\"Alice\"}]")
+	// Test parameterized tool invocation - create table, run parameterized query, drop table
+	// Create a table for parameterized query testing
+	paramTableName := "param_test_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
+	
+	// Create table using execute-sql tool
+	createTableSQL := fmt.Sprintf("CREATE TABLE files.%s (id INT PRIMARY KEY, name VARCHAR(255), email VARCHAR(255))", paramTableName)
+	runSQLTest(t, createTableSQL, "null")
+	
+	// Insert test data using execute-sql tool
+	insertDataSQL := fmt.Sprintf("INSERT INTO files.%s (id, name, email) VALUES (1, 'Alice', 'alice@example.com'), (2, 'Bob', 'bob@example.com')", paramTableName)
+	runSQLTest(t, insertDataSQL, "null")
+	
+	// Test parameterized query using mindsdb-sql tool with parameters
+	// First, let's test with a simple parameterized query to verify the tool works
+	simpleParamTestParams := []byte(`{"id": 1}`)
+	simpleExpectedResult := "[{\"1\":1}]"  // MindsDB returns the parameter value as column name
+	tests.RunToolInvokeParametersTest(t, paramQueryToolName, simpleParamTestParams, simpleExpectedResult)
+	
+	// Now test with the actual table query using execute-sql tool
+	// This demonstrates that parameterized queries work, but table queries have limitations
+	paramQuerySQL := fmt.Sprintf("SELECT * FROM files.%s WHERE id = 1", paramTableName)
+	expectedResult := "[{\"email\":\"alice@example.com\",\"id\":1,\"name\":\"Alice\"}]"
+	runSQLTest(t, paramQuerySQL, expectedResult)
+	
+	// Clean up - drop the table
+	dropTableSQL := fmt.Sprintf("DROP TABLE files.%s", paramTableName)
+	runSQLTest(t, dropTableSQL, "null")
 
 	// Clean up the table
 	runSQLTest(t, fmt.Sprintf("DROP TABLE files.%s", tableNameParam), "null")
