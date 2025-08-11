@@ -18,6 +18,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	yaml "github.com/goccy/go-yaml"
 	"github.com/googleapis/genai-toolbox/internal/sources"
@@ -124,18 +125,50 @@ type Tool struct {
 
 func (t Tool) Invoke(ctx context.Context, params tools.ParamValues) (any, error) {
 	paramsMap := params.AsMap()
+	
 	newStatement, err := tools.ResolveTemplateParams(t.TemplateParameters, t.Statement, paramsMap)
 	if err != nil {
 		return nil, fmt.Errorf("unable to extract template params %w", err)
 	}
 
-	newParams, err := tools.GetParams(t.Parameters, paramsMap)
+	// Use ParseParams instead of GetParams to handle optional parameters and defaults properly
+	newParams, err := tools.ParseParams(t.Parameters, paramsMap, nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to extract standard params %w", err)
 	}
 
 	sliceParams := newParams.AsSlice()
-	results, err := t.Pool.QueryContext(ctx, newStatement, sliceParams...)
+	
+	// MindsDB has a bug with parameterized queries, so we need to construct the SQL directly
+	// Replace ? placeholders with actual values
+	finalSQL := newStatement
+	for _, param := range sliceParams {
+		var valueStr string
+		if param == nil {
+			valueStr = "NULL"
+		} else {
+			switch v := param.(type) {
+			case string:
+				valueStr = fmt.Sprintf("'%s'", v)
+			case int, int32, int64:
+				valueStr = fmt.Sprintf("%v", v)
+			case float32, float64:
+				valueStr = fmt.Sprintf("%v", v)
+			case bool:
+				valueStr = fmt.Sprintf("%t", v)
+			default:
+				valueStr = fmt.Sprintf("'%v'", v)
+			}
+		}
+		// Replace the first ? with the value
+		index := strings.Index(finalSQL, "?")
+		if index != -1 {
+			finalSQL = finalSQL[:index] + valueStr + finalSQL[index+1:]
+		}
+	}
+	
+	// Execute the SQL directly without parameters
+	results, err := t.Pool.QueryContext(ctx, finalSQL)
 	if err != nil {
 		return nil, fmt.Errorf("unable to execute query: %w", err)
 	}
