@@ -502,7 +502,7 @@ steps:
       - "SERVICE_ACCOUNT_EMAIL=$SERVICE_ACCOUNT_EMAIL"
       - "MYSQL_PORT=$_MYSQL_PORT"
       - "MYSQL_DATABASE=$_DATABASE_NAME"
-    secretEnv: ["MINDSDB_HOST", "MINDSDB_USER", "MINDSDB_PASS", "MINDSDB_MYSQL_USER", "MINDSDB_MYSQL_PASS", "CLIENT_ID"]
+    secretEnv: ["MINDSDB_HOST", "MINDSDB_USER", "MINDSDB_PASS", "CLIENT_ID"]
     volumes:
       - name: "go"
         path: "/gopath"
