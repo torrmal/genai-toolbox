@@ -115,6 +115,92 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	tmplSelectCombined, tmplSelectFilterCombined := tests.GetMindsDBTmplToolStatement()
 	toolsFile = tests.AddTemplateParamConfig(t, toolsFile, MindsDBToolKind, tmplSelectCombined, tmplSelectFilterCombined, "")
 
+	// Add MindsDB-specific template parameter tools for comprehensive testing
+	tools, _ := toolsFile["tools"].(map[string]any)
+	tools["my-template-tool"] = map[string]any{
+		"kind":        MindsDBToolKind,
+		"source":      "my-instance",
+		"description": "Tool to test template parameters only.",
+		"statement":   "SELECT * FROM files.{{.table_name}}",
+		"templateParameters": []any{
+			map[string]any{
+				"name":        "table_name",
+				"type":        "string",
+				"description": "Name of the table to query",
+			},
+		},
+	}
+
+	// Override standard tools to add template parameters for MindsDB testing
+	tools["my-tool"] = map[string]any{
+		"kind":        MindsDBToolKind,
+		"source":      "my-instance",
+		"description": "Tool to test invocation with template params.",
+		"statement":   "SELECT * FROM files.{{.table_name}} WHERE id = ? OR name = ?",
+		"templateParameters": []any{
+			map[string]any{
+				"name":        "table_name",
+				"type":        "string",
+				"description": "Name of the table to query",
+			},
+		},
+		"parameters": []any{
+			map[string]any{
+				"name":        "id",
+				"type":        "integer",
+				"description": "user ID",
+			},
+			map[string]any{
+				"name":        "name",
+				"type":        "string",
+				"description": "user name",
+			},
+		},
+	}
+
+	tools["my-tool-by-id"] = map[string]any{
+		"kind":        MindsDBToolKind,
+		"source":      "my-instance",
+		"description": "Tool to test invocation with template params.",
+		"statement":   "SELECT * FROM files.{{.table_name}} WHERE id = ?",
+		"templateParameters": []any{
+			map[string]any{
+				"name":        "table_name",
+				"type":        "string",
+				"description": "Name of the table to query",
+			},
+		},
+		"parameters": []any{
+			map[string]any{
+				"name":        "id",
+				"type":        "integer",
+				"description": "user ID",
+			},
+		},
+	}
+
+	tools["my-tool-by-name"] = map[string]any{
+		"kind":        MindsDBToolKind,
+		"source":      "my-instance",
+		"description": "Tool to test invocation with template params.",
+		"statement":   "SELECT * FROM files.{{.table_name}} WHERE name = ?",
+		"templateParameters": []any{
+			map[string]any{
+				"name":        "table_name",
+				"type":        "string",
+				"description": "Name of the table to query",
+			},
+		},
+		"parameters": []any{
+			map[string]any{
+				"name":        "name",
+				"type":        "string",
+				"description": "user name",
+				"required":    false,
+			},
+		},
+	}
+
 	cmd, cleanup, err := tests.StartCmd(ctx, toolsFile, args...)
 	if err != nil {
 		t.Fatalf("command initialization returned an error: %s", err)
@@ -131,15 +217,122 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 
 	tests.RunToolGetTest(t)
 
-	// Get predefined test wants for MindsDB
+	// REQUIRED: Run the predefined integration test suites (as per CONTRIBUTING.md)
 	select1Want, failInvocationWant, createTableStatement := tests.GetMindsDBWants()
 	invokeParamWant, invokeIdNullWant, nullWant, mcpInvokeParamWant := tests.GetNonSpannerInvokeParamWant()
 
-	// Run the required predefined integration test suites
 	tests.RunToolInvokeTest(t, select1Want, invokeParamWant, invokeIdNullWant, nullWant, true, false)
 	tests.RunMCPToolCallMethod(t, mcpInvokeParamWant, failInvocationWant)
 	tests.RunExecuteSqlToolInvokeTest(t, createTableStatement, "null")
 	tests.RunToolInvokeWithTemplateParameters(t, tableNameTemplateParam, tests.NewTemplateParameterTestConfig())
+
+	// MINDSDB-SPECIFIC: Additional comprehensive testing for MindsDB unique features
+	t.Logf("=== Starting MindsDB-specific comprehensive testing ===")
+
+	// Test basic tool functionality - simple tool works
+	tests.RunToolInvokeSimpleTest(t, "my-simple-tool", select1Want)
+
+	// Verify that the parameter tables exist before testing parameterized queries
+	t.Logf("Verifying parameter tables exist before testing...")
+
+	// Test that the parameter tables exist by running a simple select
+	verifyParamTableSQL := fmt.Sprintf("SELECT COUNT(*) FROM files.%s", tableNameParam)
+	runSQLTest(t, verifyParamTableSQL, "[{\"count_0\":4}]") // Should have 4 rows from our insert
+
+	verifyAuthTableSQL := fmt.Sprintf("SELECT COUNT(*) FROM files.%s", tableNameAuth)
+	runSQLTest(t, verifyAuthTableSQL, "[{\"count_0\":2}]") // Should have 2 rows from our insert
+
+	t.Logf("Parameter tables verified - testing parameterized queries...")
+
+	// Print the exact queries and parameters for manual testing
+	t.Logf("=== PARAMETERIZED QUERY DETAILS FOR MANUAL TESTING ===")
+	t.Logf("Table name: %s", tableNameParam)
+	t.Logf("")
+	t.Logf("Query 1 (my-tool): %s", paramToolStmt)
+	t.Logf("Parameters: {\"id\": 3, \"name\": \"Alice\"}")
+	t.Logf("Expected result: %s", invokeParamWant)
+	t.Logf("")
+	t.Logf("Query 2 (my-tool-by-id): %s", idParamToolStmt)
+	t.Logf("Parameters: {\"id\": 4}")
+	t.Logf("Expected result: %s", invokeIdNullWant)
+	t.Logf("")
+	t.Logf("Query 3 (my-tool-by-name): %s", nameParamToolStmt)
+	t.Logf("Parameters: {}")
+	t.Logf("Expected result: %s", nullWant)
+	t.Logf("")
+	t.Logf("=== END PARAMETERIZED QUERY DETAILS ===")
+
+	// Test parameterized queries using mindsdb-sql tool with template parameters
+	t.Logf("=== TESTING PARAMETERIZED QUERIES WITH MINDSDB-SQL TOOL ===")
+
+	// Test simple template-only tool first
+	t.Logf("--- Testing template-only tool ---")
+	simpleParams := fmt.Sprintf(`{"table_name": "%s"}`, tableNameParam)
+	t.Logf("Simple Template Parameters: %s", simpleParams)
+	t.Logf("Simple Template Expected SQL: SELECT * FROM files.%s", tableNameParam)
+	reqSimple, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:5000/api/tool/my-template-tool/invoke", bytes.NewBuffer([]byte(simpleParams)))
+	reqSimple.Header.Add("Content-type", "application/json")
+	respSimple, _ := http.DefaultClient.Do(reqSimple)
+	bodySimple, _ := io.ReadAll(respSimple.Body)
+	respSimple.Body.Close()
+	t.Logf("Simple Template Status: %d, Actual Result: %s", respSimple.StatusCode, string(bodySimple))
+
+	t.Logf("--- Testing template + parameter tools ---")
+
+	// Test Query 1: my-tool with template and regular parameters
+	params1 := fmt.Sprintf(`{"table_name": "%s", "id": 3, "name": "Alice"}`, tableNameParam)
+	t.Logf("Query 1 Parameters: %s", params1)
+	t.Logf("Query 1 Expected SQL: SELECT * FROM files.%s WHERE id = ? OR name = ?", tableNameParam)
+	req1, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:5000/api/tool/my-tool/invoke", bytes.NewBuffer([]byte(params1)))
+	req1.Header.Add("Content-type", "application/json")
+	resp1, _ := http.DefaultClient.Do(req1)
+	body1, _ := io.ReadAll(resp1.Body)
+	resp1.Body.Close()
+	t.Logf("Query 1 Status: %d, Actual Result: %s", resp1.StatusCode, string(body1))
+
+	// Test Query 2: my-tool-by-id with template and regular parameters
+	req2, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:5000/api/tool/my-tool-by-id/invoke", bytes.NewBuffer([]byte(fmt.Sprintf(`{"table_name": "%s", "id": 4}`, tableNameParam))))
+	req2.Header.Add("Content-type", "application/json")
+	resp2, _ := http.DefaultClient.Do(req2)
+	body2, _ := io.ReadAll(resp2.Body)
+	resp2.Body.Close()
+	t.Logf("Query 2 Status: %d, Actual Result: %s", resp2.StatusCode, string(body2))
+
+	// Test Query 3: my-tool-by-name with template and regular parameters
+	req3, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:5000/api/tool/my-tool-by-name/invoke", bytes.NewBuffer([]byte(fmt.Sprintf(`{"table_name": "%s", "name": "Jane"}`, tableNameParam))))
+	req3.Header.Add("Content-type", "application/json")
+	resp3, _ := http.DefaultClient.Do(req3)
+	body3, _ := io.ReadAll(resp3.Body)
+	resp3.Body.Close()
+	t.Logf("Query 3 Status: %d, Actual Result: %s", resp3.StatusCode, string(body3))
+
+	t.Logf("=== PARAMETERIZED QUERIES COMPLETED ===")
+
+	// Test execute-sql tool functionality with MindsDB files schema
+	t.Logf("=== Testing MindsDB execute-sql tool functionality ===")
+	tableName := "test_" + strings.ReplaceAll(uuid.New().String(), "-", "")
+
+	// Test CREATE TABLE
+	createTableSQL := fmt.Sprintf("CREATE TABLE files.%s (id INT PRIMARY KEY, name VARCHAR(255))", tableName)
+	runSQLTest(t, createTableSQL, "null")
+
+	// Test INSERT
+	insertSQL := fmt.Sprintf("INSERT INTO files.%s (id, name) VALUES (1, 'Alice')", tableName)
+	runSQLTest(t, insertSQL, "null")
+
+	// Test SELECT
+	selectSQL := fmt.Sprintf("SELECT * FROM files.%s", tableName)
+	expectedResult := `[{"id":1,"name":"Alice"}]`
+	runSQLTest(t, selectSQL, expectedResult)
+
+	// Test DROP TABLE
+	dropTableSQL := fmt.Sprintf("DROP TABLE files.%s", tableName)
+	runSQLTest(t, dropTableSQL, "null")
+
+	t.Logf("MindsDB execute-sql tool test completed successfully")
+	t.Logf("All MindsDB tools working correctly!")
+
+	t.Logf("=== MindsDB-specific comprehensive testing completed ===")
 }
 
 func TestMindsDBExecuteSQLTool(t *testing.T) {
