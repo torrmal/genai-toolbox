@@ -170,10 +170,9 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 
 	tests.RunToolGetTest(t)
 
-	select1Want, failInvocationWant, createTableStatement := tests.GetMySQLWants()
-	invokeParamWant, invokeIdNullWant, nullWant, mcpInvokeParamWant := tests.GetNonSpannerInvokeParamWant()
-	tests.RunToolInvokeTest(t, select1Want, invokeParamWant, invokeIdNullWant, nullWant, true, false)
+	select1Want, mcpMyFailToolWant, createTableStatement := tests.GetMySQLWants()
+	tests.RunToolInvokeTest(t, select1Want, tests.DisableArrayTest())
 	tests.RunExecuteSqlToolInvokeTest(t, createTableStatement, select1Want)
-	tests.RunMCPToolCallMethod(t, mcpInvokeParamWant, failInvocationWant)
-	tests.RunToolInvokeWithTemplateParameters(t, tableNameTemplateParam, tests.NewTemplateParameterTestConfig())
+	tests.RunMCPToolCallMethod(t, mcpMyFailToolWant)
+	tests.RunToolInvokeWithTemplateParameters(t, tableNameTemplateParam)
 }
