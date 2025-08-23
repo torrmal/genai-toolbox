@@ -126,6 +126,9 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 
 	setupMindsDBIntegration(t, ctx)
 
+	// Give MindsDB integration time to establish connection to MySQL
+	time.Sleep(2 * time.Second)
+
 	var args []string
 
 	pool, err := initMySQLConnectionPool(MindsDBHost, MySQLPort, MySQLUser, MySQLPass, MySQLDatabase)
@@ -138,15 +141,20 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	tableNameAuth := "auth_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 	tableNameTemplateParam := "template_param_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 
-	// set up data for param tool
+	// set up data for param tool - create tables in the underlying MySQL database
 	createParamTableStmt, insertParamTableStmt, paramToolStmt, idParamToolStmt, nameParamToolStmt, arrayToolStmt, paramTestParams := tests.GetMySQLParamToolInfo(tableNameParam)
+	t.Logf("Creating param table: %s", tableNameParam)
 	teardownTable1 := tests.SetupMySQLTable(t, ctx, pool, createParamTableStmt, insertParamTableStmt, tableNameParam, paramTestParams)
 	defer teardownTable1(t)
 
-	// set up data for auth tool
+	// set up data for auth tool - create tables in the underlying MySQL database
 	createAuthTableStmt, insertAuthTableStmt, authToolStmt, authTestParams := tests.GetMySQLAuthToolInfo(tableNameAuth)
+	t.Logf("Creating auth table: %s", tableNameAuth)
 	teardownTable2 := tests.SetupMySQLTable(t, ctx, pool, createAuthTableStmt, insertAuthTableStmt, tableNameAuth, authTestParams)
 	defer teardownTable2(t)
+
+	// Allow time for MindsDB to detect the new tables
+	time.Sleep(1 * time.Second)
 
 	// Write config into a file and pass it to command
 	toolsFile := tests.GetToolsConfig(sourceConfig, MindsDBToolKind, paramToolStmt, idParamToolStmt, nameParamToolStmt, arrayToolStmt, authToolStmt)
@@ -170,9 +178,15 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 
 	tests.RunToolGetTest(t)
 
-	select1Want, mcpMyFailToolWant, createTableStatement := tests.GetMySQLWants()
+	select1Want, mcpMyFailToolWant, createTableStatement := tests.GetMindsDBWants()
+
+	// Run basic tests - these should work once table setup is fixed
 	tests.RunToolInvokeTest(t, select1Want, tests.DisableArrayTest())
 	tests.RunExecuteSqlToolInvokeTest(t, createTableStatement, select1Want)
 	tests.RunMCPToolCallMethod(t, mcpMyFailToolWant)
-	tests.RunToolInvokeWithTemplateParameters(t, tableNameTemplateParam)
+
+	// Skip template parameter tests as MindsDB doesn't support standard DDL operations
+	tests.RunToolInvokeWithTemplateParameters(t, tableNameTemplateParam,
+		tests.DisableDdlTest(),
+		tests.DisableInsertTest())
 }
