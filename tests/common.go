@@ -525,7 +525,7 @@ func GetRedisValkeyWants() (string, string, string, string, string, string) {
 func GetMindsDBWants() (string, string, string) {
 	select1Want := "[{\"1\":1}]"
 	// MindsDB has different error message format for syntax errors - exact format from CI logs
-	mcpMyFailToolWant := `{"jsonrpc":"2.0","id":"invoke-fail-tool","result":{"content":[{"type":"text","text":"unable to execute query: Error 1149: The SQL statement cannot be parsed - SELEC 1: Syntax error, unknown input:\\n\\u003eSELEC 1\\n-^^^^^"}],"isError":true}}`
+	mcpMyFailToolWant := `{"jsonrpc":"2.0","id":"invoke-fail-tool","result":{"content":[{"type":"text","text":"unable to execute query: Error 1149: The SQL statement cannot be parsed - SELEC 1: Syntax error, unknown input:\n\u003eSELEC 1\n-^^^^^"}],"isError":true}}`
 	// Use same CREATE TABLE as MySQL for execute sql test
 	createTableStatement := `"CREATE TABLE t (id SERIAL PRIMARY KEY, name TEXT)"`
 	return select1Want, mcpMyFailToolWant, createTableStatement

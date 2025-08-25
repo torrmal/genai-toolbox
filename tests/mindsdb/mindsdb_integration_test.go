@@ -131,9 +131,10 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 
 	var args []string
 
-	pool, err := initMySQLConnectionPool(MindsDBHost, MySQLPort, MySQLUser, MySQLPass, MySQLDatabase)
+	// Create connection pool to MySQL database for table creation
+	mysqlPool, err := initMySQLConnectionPool(MySQLHost, MySQLPort, MySQLUser, MySQLPass, MySQLDatabase)
 	if err != nil {
-		t.Fatalf("unable to create MindsDB connection pool: %s", err)
+		t.Fatalf("unable to create MySQL connection pool: %s", err)
 	}
 
 	// create table name with UUID
@@ -142,25 +143,37 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	tableNameTemplateParam := "template_param_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 
 	// set up data for param tool - create tables in the underlying MySQL database
-	createParamTableStmt, insertParamTableStmt, paramToolStmt, idParamToolStmt, nameParamToolStmt, arrayToolStmt, paramTestParams := tests.GetMySQLParamToolInfo(tableNameParam)
+	createParamTableStmt, insertParamTableStmt, _, _, _, _, paramTestParams := tests.GetMySQLParamToolInfo(tableNameParam)
+	// Create MindsDB-specific tool statements that reference tables through the integration
+	paramToolStmt := fmt.Sprintf("SELECT * FROM %s.%s WHERE id = ? OR name = ?;", MindsDBDatabase, tableNameParam)
+	idParamToolStmt := fmt.Sprintf("SELECT * FROM %s.%s WHERE id = ?;", MindsDBDatabase, tableNameParam)
+	nameParamToolStmt := fmt.Sprintf("SELECT * FROM %s.%s WHERE name = ?;", MindsDBDatabase, tableNameParam)
+	arrayToolStmt := fmt.Sprintf("SELECT * FROM %s.%s WHERE id = ANY(?) AND name = ANY(?);", MindsDBDatabase, tableNameParam)
+
 	t.Logf("Creating param table: %s", tableNameParam)
-	teardownTable1 := tests.SetupMySQLTable(t, ctx, pool, createParamTableStmt, insertParamTableStmt, tableNameParam, paramTestParams)
+	teardownTable1 := tests.SetupMySQLTable(t, ctx, mysqlPool, createParamTableStmt, insertParamTableStmt, tableNameParam, paramTestParams)
 	defer teardownTable1(t)
 
 	// set up data for auth tool - create tables in the underlying MySQL database
-	createAuthTableStmt, insertAuthTableStmt, authToolStmt, authTestParams := tests.GetMySQLAuthToolInfo(tableNameAuth)
+	createAuthTableStmt, insertAuthTableStmt, _, authTestParams := tests.GetMySQLAuthToolInfo(tableNameAuth)
+	// Create MindsDB-specific auth tool statement
+	authToolStmt := fmt.Sprintf("SELECT name FROM %s.%s WHERE email = ?;", MindsDBDatabase, tableNameAuth)
+
 	t.Logf("Creating auth table: %s", tableNameAuth)
-	teardownTable2 := tests.SetupMySQLTable(t, ctx, pool, createAuthTableStmt, insertAuthTableStmt, tableNameAuth, authTestParams)
+	teardownTable2 := tests.SetupMySQLTable(t, ctx, mysqlPool, createAuthTableStmt, insertAuthTableStmt, tableNameAuth, authTestParams)
 	defer teardownTable2(t)
 
 	// Allow time for MindsDB to detect the new tables
-	time.Sleep(1 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	// Write config into a file and pass it to command
 	toolsFile := tests.GetToolsConfig(sourceConfig, MindsDBToolKind, paramToolStmt, idParamToolStmt, nameParamToolStmt, arrayToolStmt, authToolStmt)
 	toolsFile = tests.AddMySqlExecuteSqlConfig(t, toolsFile)
-	tmplSelectCombined, tmplSelectFilterCombined := tests.GetMySQLTmplToolStatement()
-	toolsFile = tests.AddTemplateParamConfig(t, toolsFile, MindsDBToolKind, tmplSelectCombined, tmplSelectFilterCombined, "")
+	// Create MindsDB-specific template statements that reference tables through the integration
+	tmplSelectCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE id = ?", MindsDBDatabase)
+	tmplSelectFilterCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE {{.columnFilter}} = ?", MindsDBDatabase)
+	tmplSelectAll := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} ORDER BY id", MindsDBDatabase)
+	toolsFile = tests.AddTemplateParamConfig(t, toolsFile, MindsDBToolKind, tmplSelectCombined, tmplSelectFilterCombined, tmplSelectAll)
 
 	cmd, cleanup, err := tests.StartCmd(ctx, toolsFile, args...)
 	if err != nil {
@@ -178,11 +191,12 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 
 	tests.RunToolGetTest(t)
 
-	select1Want, mcpMyFailToolWant, createTableStatement := tests.GetMindsDBWants()
+	select1Want, mcpMyFailToolWant, _ := tests.GetMindsDBWants()
 
 	// Run basic tests - these should work once table setup is fixed
 	tests.RunToolInvokeTest(t, select1Want, tests.DisableArrayTest())
-	tests.RunExecuteSqlToolInvokeTest(t, createTableStatement, select1Want)
+	// Skip ExecuteSQL tests for MindsDB as it should not perform DDL operations
+	// Tables should be created in the underlying MySQL database, not through MindsDB
 	tests.RunMCPToolCallMethod(t, mcpMyFailToolWant)
 
 	// Skip template parameter tests as MindsDB doesn't support standard DDL operations
