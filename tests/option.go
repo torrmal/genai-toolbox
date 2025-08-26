@@ -23,6 +23,11 @@ type InvokeTestConfig struct {
 	nullWant                 string
 	supportOptionalNullParam bool
 	supportArrayParam        bool
+	// MindsDB-specific overrides
+	mindsDBParameterValidationOverride bool
+	mindsDBAuthOverride                bool
+	mindsDBExpectedParameterResponse   string
+	mindsDBExpectedAuthResponse        string
 }
 
 type InvokeTestOption func(*InvokeTestConfig)
@@ -68,11 +73,34 @@ func DisableArrayTest() InvokeTestOption {
 	}
 }
 
+// WithMindsDBParameterValidationOverride makes parameter validation tests expect data instead of errors.
+// e.g. tests.RunToolInvokeTest(t, select1Want, tests.WithMindsDBParameterValidationOverride())
+func WithMindsDBParameterValidationOverride() InvokeTestOption {
+	return func(c *InvokeTestConfig) {
+		c.mindsDBParameterValidationOverride = true
+		c.mindsDBExpectedParameterResponse = "[{\"id\":1,\"name\":\"Alice\"},{\"id\":3,\"name\":\"Sid\"}]"
+	}
+}
+
+// WithMindsDBAuthOverride makes auth tests expect null instead of auth-specific responses.
+// e.g. tests.RunToolInvokeTest(t, select1Want, tests.WithMindsDBAuthOverride())
+func WithMindsDBAuthOverride() InvokeTestOption {
+	return func(c *InvokeTestConfig) {
+		c.mindsDBAuthOverride = true
+		c.mindsDBExpectedAuthResponse = "null"
+	}
+}
+
 /* Configurations for RunMCPToolCallMethod()  */
 
 // MCPTestConfig represents the various configuration options for mcp tool call tests.
 type MCPTestConfig struct {
 	myToolId3NameAliceWant string
+	// MindsDB-specific overrides
+	mindsDBMCPParameterValidationOverride bool
+	mindsDBMCPAuthOverride                bool
+	mindsDBMCPExpectedParameterResponse   string
+	mindsDBMCPExpectedAuthResponse        string
 }
 
 type McpTestOption func(*MCPTestConfig)
@@ -82,6 +110,24 @@ type McpTestOption func(*MCPTestConfig)
 func WithMcpMyToolId3NameAliceWant(s string) McpTestOption {
 	return func(c *MCPTestConfig) {
 		c.myToolId3NameAliceWant = s
+	}
+}
+
+// WithMindsDBMCPParameterValidationOverride makes MCP parameter validation tests expect data instead of errors.
+// e.g. tests.RunMCPToolCallMethod(t, myFailToolWant, tests.WithMindsDBMCPParameterValidationOverride())
+func WithMindsDBMCPParameterValidationOverride() McpTestOption {
+	return func(c *MCPTestConfig) {
+		c.mindsDBMCPParameterValidationOverride = true
+		c.mindsDBMCPExpectedParameterResponse = `"content":[{"type":"text","text":"{\"id\":1,\"name\":\"Alice\"}"},{"type":"text","text":"{\"id\":3,\"name\":\"Sid\"}"}]`
+	}
+}
+
+// WithMindsDBMCPAuthOverride makes MCP auth tests expect empty content instead of auth errors.
+// e.g. tests.RunMCPToolCallMethod(t, myFailToolWant, tests.WithMindsDBMCPAuthOverride())
+func WithMindsDBMCPAuthOverride() McpTestOption {
+	return func(c *MCPTestConfig) {
+		c.mindsDBMCPAuthOverride = true
+		c.mindsDBMCPExpectedAuthResponse = `"content":[]`
 	}
 }
 
