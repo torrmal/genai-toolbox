@@ -1,0 +1,12 @@
+services:
+  gotest:
+    image: golang:1.22-bookworm
+    working_dir: /app
+    volumes:
+      - .:/app
+    depends_on:
+      - mysql-server
+      - mindsdb
+    entrypoint: ["/bin/bash","-lc"]
+    command: >
+      /usr/bin/env bash -lc 'which /usr/local/go/bin/go || true && /usr/local/go/bin/go version && apt-get update -qq && apt-get install -y -qq netcat-traditional > /dev/null && until nc -z mysql-server 3306; do echo "esperando MySQL..."; sleep 2; done && until nc -z mindsdb 47335; do echo "esperando MindsDB..."; sleep 2; done && /usr/local/go/bin/go mod download && MINDSDB_HOST=mindsdb MINDSDB_PORT=47335 MINDSDB_DATABASE=testdb MINDSDB_USER=mindsdb MINDSDB_PASS=none MYSQL_HOST=mysql-server MYSQL_PORT=3306 MYSQL_DATABASE=testdb MYSQL_USER=testuser MYSQL_PASS=testpass /usr/local/go/bin/go test -count=1 -timeout 10m ./tests/mindsdb -run TestMindsDBToolEndpoints -v'
