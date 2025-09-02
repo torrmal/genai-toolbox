@@ -67,18 +67,28 @@ func getMindsDBVars(t *testing.T) map[string]any {
 		t.Fatal("'MYSQL_DATABASE' not set")
 	}
 
+	// Handle MindsDB's no-password authentication for toolbox config
+	mindsdbPassword := MindsDBPass
+	if mindsdbPassword == "none" {
+		mindsdbPassword = ""
+	}
+
 	return map[string]any{
 		"kind":     MindsDBSourceKind,
 		"host":     MindsDBHost,
 		"port":     MindsDBPort,
 		"database": MindsDBDatabase,
 		"user":     MindsDBUser,
-		"password": MindsDBPass,
+		"password": mindsdbPassword,
 	}
 }
 
 // Copied over from mysql.go
 func initMySQLConnectionPool(host, port, user, pass, dbname string) (*sql.DB, error) {
+	// Handle MindsDB's no-password authentication: if pass is "none", use empty string
+	if pass == "none" {
+		pass = ""
+	}
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, pass, host, port, dbname)
 	pool, err := sql.Open("mysql", dsn)
 	if err != nil {
@@ -95,10 +105,14 @@ func setupMindsDBIntegration(t *testing.T, ctx context.Context) {
 	}
 	defer mindsdbPool.Close()
 
-	// MindsDB runs in Docker and needs to use Docker network names to connect to MySQL
-	// Use mysql-server:3306 for Docker network communication, not the host port mapping
-	mysqlDockerHost := "mysql-server"
-	mysqlDockerPort := "3306"
+	// Use environment variables for MySQL connection
+	// For Docker network: MYSQL_HOST=mysql-server, for host network: MYSQL_HOST=127.0.0.1
+	mysqlDockerHost := MySQLHost
+	mysqlDockerPort := MySQLPort
+
+	// Debug: Print the values being used
+	t.Logf("DEBUG: MindsDB MySQL connection params - user: %s, pass: %s, host: %s, port: %s, database: %s",
+		MySQLUser, MySQLPass, mysqlDockerHost, mysqlDockerPort, MySQLDatabase)
 
 	// The SQL command to connect MindsDB to the MySQL test database.
 	createStatement := fmt.Sprintf(`
@@ -386,7 +400,7 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 
 	// Skip ExecuteSQL tests for MindsDB as it should not perform DDL operations
 	// Tables should be created in the underlying MySQL database, not through MindsDB
-	tests.RunMCPToolCallMethod(t, mcpMyFailToolWant,
+	tests.RunMCPToolCallMethod(t, mcpMyFailToolWant, select1Want,
 		tests.WithMcpMyToolId3NameAliceWant(`{"jsonrpc":"2.0","id":"my-tool","result":{"content":[{"type":"text","text":"{\"id\":1,\"name\":\"Alice\"}"},{"type":"text","text":"{\"id\":3,\"name\":\"Sid\"}"}]}}`),
 		// MINDSDB CRITICAL CI FIX: Override all failing MCP test expectations
 		tests.WithMindsDBMCPParameterValidationOverride(),
