@@ -197,7 +197,7 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	tests.RunToolInvokeTest(t, select1Want, tests.DisableArrayTest())
 	// Skip ExecuteSQL tests for MindsDB as it should not perform DDL operations
 	// Tables should be created in the underlying MySQL database, not through MindsDB
-	tests.RunMCPToolCallMethod(t, mcpMyFailToolWant)
+	tests.RunMCPToolCallMethod(t, mcpMyFailToolWant, select1Want)
 
 	// Skip template parameter tests as MindsDB doesn't support standard DDL operations
 	tests.RunToolInvokeWithTemplateParameters(t, tableNameTemplateParam,
