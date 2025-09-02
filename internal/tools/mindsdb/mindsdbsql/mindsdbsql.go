@@ -173,13 +173,10 @@ func (t Tool) Invoke(ctx context.Context, params tools.ParamValues, accessToken 
 				continue
 			}
 
-			// mysql driver return []uint8 type for "TEXT", "VARCHAR", and "NVARCHAR"
-			// we'll need to cast it back to string
-			switch colTypes[i].DatabaseTypeName() {
-			case "TEXT", "VARCHAR", "NVARCHAR":
-				vMap[name] = string(val.([]byte))
-			default:
-				vMap[name] = val
+			// MindsDB uses mysql driver
+			vMap[name], err = mysqlcommon.ConvertToType(colTypes[i], val)
+			if err != nil {
+				return nil, fmt.Errorf("errors encountered when converting values: %w", err)
 			}
 		}
 		out = append(out, vMap)
