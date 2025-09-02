@@ -23,6 +23,7 @@ type InvokeTestConfig struct {
 	nullWant                 string
 	supportOptionalNullParam bool
 	supportArrayParam        bool
+	supportClientAuth        bool
 	// MindsDB-specific overrides
 	mindsDBParameterValidationOverride bool
 	mindsDBAuthOverride                bool
@@ -73,21 +74,12 @@ func DisableArrayTest() InvokeTestOption {
 	}
 }
 
-// WithMindsDBParameterValidationOverride makes parameter validation tests expect data instead of errors.
-// e.g. tests.RunToolInvokeTest(t, select1Want, tests.WithMindsDBParameterValidationOverride())
-func WithMindsDBParameterValidationOverride() InvokeTestOption {
+// EnableClientAuthTest runs the client authorization tests.
+// Only enable it if your source supports the `useClientOAuth` configuration.
+// Currently, this should only be used with the BigQuery tests.
+func EnableClientAuthTest() InvokeTestOption {
 	return func(c *InvokeTestConfig) {
-		c.mindsDBParameterValidationOverride = true
-		c.mindsDBExpectedParameterResponse = "[{\"id\":1,\"name\":\"Alice\"},{\"id\":3,\"name\":\"Sid\"}]"
-	}
-}
-
-// WithMindsDBAuthOverride makes auth tests expect null instead of auth-specific responses.
-// e.g. tests.RunToolInvokeTest(t, select1Want, tests.WithMindsDBAuthOverride())
-func WithMindsDBAuthOverride() InvokeTestOption {
-	return func(c *InvokeTestConfig) {
-		c.mindsDBAuthOverride = true
-		c.mindsDBExpectedAuthResponse = "null"
+		c.supportClientAuth = true
 	}
 }
 
@@ -96,7 +88,8 @@ func WithMindsDBAuthOverride() InvokeTestOption {
 // MCPTestConfig represents the various configuration options for mcp tool call tests.
 type MCPTestConfig struct {
 	myToolId3NameAliceWant string
-	// MindsDB-specific overrides
+	supportClientAuth      bool
+	// MindsDB-specific MCP overrides
 	mindsDBMCPParameterValidationOverride bool
 	mindsDBMCPAuthOverride                bool
 	mindsDBMCPExpectedParameterResponse   string
@@ -113,21 +106,12 @@ func WithMcpMyToolId3NameAliceWant(s string) McpTestOption {
 	}
 }
 
-// WithMindsDBMCPParameterValidationOverride makes MCP parameter validation tests expect data instead of errors.
-// e.g. tests.RunMCPToolCallMethod(t, myFailToolWant, tests.WithMindsDBMCPParameterValidationOverride())
-func WithMindsDBMCPParameterValidationOverride() McpTestOption {
+// EnableMcpClientAuthTest runs the client authorization tests.
+// Only enable it if your source supports the `useClientOAuth` configuration.
+// Currently, this should only be used with the BigQuery tests.
+func EnableMcpClientAuthTest() McpTestOption {
 	return func(c *MCPTestConfig) {
-		c.mindsDBMCPParameterValidationOverride = true
-		c.mindsDBMCPExpectedParameterResponse = `"content":[{"type":"text","text":"{\"id\":1,\"name\":\"Alice\"}"},{"type":"text","text":"{\"id\":3,\"name\":\"Sid\"}"}]`
-	}
-}
-
-// WithMindsDBMCPAuthOverride makes MCP auth tests expect empty content instead of auth errors.
-// e.g. tests.RunMCPToolCallMethod(t, myFailToolWant, tests.WithMindsDBMCPAuthOverride())
-func WithMindsDBMCPAuthOverride() McpTestOption {
-	return func(c *MCPTestConfig) {
-		c.mindsDBMCPAuthOverride = true
-		c.mindsDBMCPExpectedAuthResponse = `"content":[]`
+		c.supportClientAuth = true
 	}
 }
 
@@ -245,5 +229,39 @@ func DisableDdlTest() TemplateParamOption {
 func DisableInsertTest() TemplateParamOption {
 	return func(c *TemplateParameterTestConfig) {
 		c.supportInsert = false
+	}
+}
+
+// MindsDB-specific option functions
+
+// WithMindsDBParameterValidationOverride enables MindsDB-specific parameter validation overrides
+func WithMindsDBParameterValidationOverride() InvokeTestOption {
+	return func(c *InvokeTestConfig) {
+		c.mindsDBParameterValidationOverride = true
+		c.mindsDBExpectedParameterResponse = `[{"id":1,"name":"Alice"},{"id":3,"name":"Sid"}]`
+	}
+}
+
+// WithMindsDBAuthOverride enables MindsDB-specific auth overrides
+func WithMindsDBAuthOverride() InvokeTestOption {
+	return func(c *InvokeTestConfig) {
+		c.mindsDBAuthOverride = true
+		c.mindsDBExpectedAuthResponse = `[{"name":"Alice"}]`
+	}
+}
+
+// WithMindsDBMCPParameterValidationOverride enables MindsDB-specific MCP parameter validation overrides
+func WithMindsDBMCPParameterValidationOverride() MCPOption {
+	return func(c *MCPTestConfig) {
+		c.mindsDBMCPParameterValidationOverride = true
+		c.mindsDBMCPExpectedParameterResponse = `{"jsonrpc":"2.0","id":"invoke-without-parameter","result":{"content":[{"type":"text","text":"{\"id\":1,\"name\":\"Alice\"}"},{"type":"text","text":"{\"id\":3,\"name\":\"Sid\"}"}]}}`
+	}
+}
+
+// WithMindsDBMCPAuthOverride enables MindsDB-specific MCP auth overrides
+func WithMindsDBMCPAuthOverride() MCPOption {
+	return func(c *MCPTestConfig) {
+		c.mindsDBMCPAuthOverride = true
+		c.mindsDBMCPExpectedAuthResponse = `{"jsonrpc":"2.0","id":"invoke my-auth-required-tool","result":{"content":[{"type":"text","text":"[{\"name\":\"Alice\"}]"}]}}`
 	}
 }
