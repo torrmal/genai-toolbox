@@ -107,12 +107,10 @@ func setupMindsDBIntegration(t *testing.T, ctx context.Context) {
 
 	// Use environment variables for MySQL connection
 	// For Docker network: MYSQL_HOST=mysql-server, for host network: MYSQL_HOST=127.0.0.1
-	mysqlDockerHost := MySQLHost
-	mysqlDockerPort := MySQLPort
 
 	// Debug: Print the values being used
 	t.Logf("DEBUG: MindsDB MySQL connection params - user: %s, pass: %s, host: %s, port: %s, database: %s",
-		MySQLUser, MySQLPass, mysqlDockerHost, mysqlDockerPort, MySQLDatabase)
+		MySQLUser, MySQLPass, MySQLHost, MySQLPort, MySQLDatabase)
 
 	// The SQL command to connect MindsDB to the MySQL test database.
 	createStatement := fmt.Sprintf(`
@@ -124,7 +122,7 @@ func setupMindsDBIntegration(t *testing.T, ctx context.Context) {
             "host": "%s",
             "port": %s,
             "database": "%s"
-        }`, MindsDBDatabase, MySQLUser, MySQLPass, mysqlDockerHost, mysqlDockerPort, MySQLDatabase)
+        }`, MindsDBDatabase, MySQLUser, MySQLPass, "mysql-server", MySQLPort, MySQLDatabase)
 
 	_, err = mindsdbPool.ExecContext(ctx, createStatement)
 	if err != nil {
