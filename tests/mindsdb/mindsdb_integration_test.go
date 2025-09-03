@@ -141,7 +141,7 @@ func setupMindsDBIntegration(t *testing.T, ctx context.Context) {
 
 // GetMindsDBToolsConfig creates a MindsDB-specific tools config with different auth queries
 // since MindsDB queries use hardcoded values instead of ? placeholders
-func GetMindsDBToolsConfig(sourceConfig map[string]any, toolKind, paramToolStatement, idParamToolStatement, nameParamToolStatement, arrayToolStatement, authToolStatement, authRequiredToolStatement string) map[string]any {
+func GetMindsDBToolsConfig(sourceConfig map[string]any, toolKind, paramToolStatement, idParamToolStatement, nameParamToolStatement, arrayToolStatement, authToolStatement string) map[string]any {
 	return map[string]any{
 		"sources": map[string]any{
 			"my-instance": sourceConfig,
@@ -186,21 +186,48 @@ func GetMindsDBToolsConfig(sourceConfig map[string]any, toolKind, paramToolState
 				"source":      "my-instance",
 				"description": "Tool to test invocation with authenticated params.",
 				"statement":   authToolStatement,
-				// No parameters - query is hardcoded
+				"parameters": []map[string]any{
+					{
+						"name":        "email",
+						"type":        "string",
+						"description": "user email",
+						"authServices": []map[string]string{
+							{
+								"name":  "my-google-auth",
+								"field": "email",
+							},
+						},
+					},
+				},
 			},
 			"my-auth-required-tool": map[string]any{
 				"kind":        toolKind,
 				"source":      "my-instance",
 				"description": "Tool to test invocation with authenticated params and auth required.",
-				"statement":   authRequiredToolStatement,
-				// No parameters - query is hardcoded
-				// Note: authRequired not supported in MindsDB, will be handled by test expectations
+				"statement":   "SELECT 1",
+				"authRequired": []string{
+					"my-google-auth",
+				},
 			},
 			"my-fail-tool": map[string]any{
 				"kind":        toolKind,
 				"source":      "my-instance",
 				"description": "Tool that fails",
 				"statement":   "SELEC 1;", // Intentional typo
+			},
+
+			"my-exec-sql-tool": map[string]any{
+				"kind":        "mindsdb-execute-sql",
+				"source":      "my-instance",
+				"description": "Tool to execute sql",
+			},
+			"my-auth-exec-sql-tool": map[string]any{
+				"kind":        "mindsdb-execute-sql",
+				"source":      "my-instance",
+				"description": "Tool to execute sql",
+				"authRequired": []string{
+					"my-google-auth",
+				},
 			},
 		},
 	}
@@ -269,11 +296,7 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	}
 
 	// set up data for auth tool - create tables in the underlying MySQL database
-	createAuthTableStmt, insertAuthTableStmt, _, authTestParams := getMindsDBAuthToolInfo(tableNameAuth)
-	// FINAL AUTH FIX: Make auth tools return empty for invalid scenarios (most test cases)
-	// Since MindsDB can't differentiate valid/invalid auth, optimize for the majority case (invalid auth)
-	authToolStmt := fmt.Sprintf("SELECT name FROM %s.%s WHERE 1=0;", MindsDBDatabase, tableNameAuth)         // Always empty for invalid auth tests
-	authRequiredToolStmt := fmt.Sprintf("SELECT name FROM %s.%s WHERE 1=0;", MindsDBDatabase, tableNameAuth) // Always empty for invalid auth tests
+	createAuthTableStmt, insertAuthTableStmt, authToolStmt, authTestParams := getMindsDBAuthToolInfo(tableNameAuth)
 
 	t.Logf("Creating auth table: %s", tableNameAuth)
 	teardownTable2 := tests.SetupMySQLTable(t, ctx, mysqlPool, createAuthTableStmt, insertAuthTableStmt, tableNameAuth, authTestParams)
@@ -283,7 +306,7 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	// Create custom MindsDB tools config with different auth queries
-	toolsFile := GetMindsDBToolsConfig(sourceConfig, MindsDBToolKind, paramToolStmt, idParamToolStmt, nameParamToolStmt, arrayToolStmt, authToolStmt, authRequiredToolStmt)
+	toolsFile := GetMindsDBToolsConfig(sourceConfig, MindsDBToolKind, paramToolStmt, idParamToolStmt, nameParamToolStmt, arrayToolStmt, authToolStmt)
 	toolsFile = tests.AddMySqlExecuteSqlConfig(t, toolsFile)
 	// Create MindsDB-specific template statements WITHOUT parameterized queries
 
@@ -303,7 +326,7 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 
 	tests.RunToolGetTest(t)
 
-	select1Want, mcpMyFailToolWant, _ := getMindsDBWants()
+	select1Want, mcpMyFailToolWant, createTableStatement := getMindsDBWants()
 
 	// FINAL PRAGMATIC APPROACH: Use existing test framework with MindsDB-optimized expectations
 	myToolId3NameAliceWant := `[{"id":1,"name":"Alice"},{"id":3,"name":"Sid"}]`
@@ -315,19 +338,13 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 		tests.WithMyToolId3NameAliceWant(myToolId3NameAliceWant),
 		tests.WithMyToolById4Want(myToolById4Want),
 		tests.WithNullWant(nullWant),
-		// MINDSDB CRITICAL CI FIX: Override all failing test expectations
-		tests.WithMindsDBParameterValidationOverride(),
-		tests.WithMindsDBAuthOverride())
-
+	)
 	// Skip ExecuteSQL tests for MindsDB as it should not perform DDL operations
 	// Tables should be created in the underlying MySQL database, not through MindsDB
 	tests.RunMCPToolCallMethod(t, mcpMyFailToolWant, select1Want,
-		tests.WithMcpMyToolId3NameAliceWant(`{"jsonrpc":"2.0","id":"my-tool","result":{"content":[{"type":"text","text":"{\"id\":1,\"name\":\"Alice\"}"},{"type":"text","text":"{\"id\":3,\"name\":\"Sid\"}"}]}}`),
-		// MINDSDB CRITICAL CI FIX: Override all failing MCP test expectations
-		tests.WithMindsDBMCPParameterValidationOverride(),
-		tests.WithMindsDBMCPAuthOverride())
+		tests.WithMcpMyToolId3NameAliceWant(`{"jsonrpc":"2.0","id":"my-tool","result":{"content":[{"type":"text","text":"{\"id\":1,\"name\":\"Alice\"}"},{"type":"text","text":"{\"id\":3,\"name\":\"Sid\"}"}]}}`))
 
-	// Skip Template parameter tests as MindsDB doesn't support DDL
+	tests.RunExecuteSqlToolInvokeTest(t, createTableStatement, select1Want)
 }
 
 // getMindsDBParamToolInfo returns statements and param for my-tool mysql-sql kind
