@@ -223,7 +223,7 @@ func addMindsDBTemplateParamConfig(t *testing.T, config map[string]any, toolKind
 		"kind":        toolKind,
 		"source":      "my-instance",
 		"description": "Create table tool with template parameters",
-		"statement":   fmt.Sprintf("CREATE TABLE %s.%s (id INT, name VARCHAR(255))", templateTableName),
+		"statement":   fmt.Sprintf("CREATE TABLE %s.%s (id INT, name VARCHAR(255))", MindsDBDatabase, templateTableName),
 		// No templateParameters - MindsDB doesn't support DDL operations anyway
 	}
 	toolsMap["insert-table-templateParams-tool"] = map[string]any{
