@@ -42,7 +42,7 @@ var (
 	MySQLUser         = os.Getenv("MINDSDB_MYSQL_USER")
 	MySQLPass         = os.Getenv("MINDSDB_MYSQL_PASS")
 	MySQLDatabase     = os.Getenv("MYSQL_DATABASE")
-	MySQLHost         = os.Getenv("MYSQL_HOST")
+	MySQLHost         = os.Getenv("MINDSDB_HOST")
 )
 
 func getMindsDBVars(t *testing.T) map[string]any {
