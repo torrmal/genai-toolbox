@@ -206,72 +206,6 @@ func GetMindsDBToolsConfig(sourceConfig map[string]any, toolKind, paramToolState
 	}
 }
 
-// addMindsDBTemplateParamConfig creates MindsDB-specific template tools without parameters
-// since MindsDB queries use hardcoded values instead of parameter placeholders
-func addMindsDBTemplateParamConfig(t *testing.T, config map[string]any, toolKind, tmplSelectCombined, tmplSelectFilterCombined string, tmplSelectAll string, templateTableName string) map[string]any {
-	toolsMap, ok := config["tools"].(map[string]any)
-	if !ok {
-		t.Fatalf("unable to get tools from config")
-	}
-
-	// selectAll not needed since we're using hardcoded table names instead of templates
-
-	// Template tools without parameters - all queries are hardcoded for MindsDB
-	// Use actual table name instead of template placeholders
-
-	toolsMap["create-table-templateParams-tool"] = map[string]any{
-		"kind":        toolKind,
-		"source":      "my-instance",
-		"description": "Create table tool with template parameters",
-		"statement":   fmt.Sprintf("CREATE TABLE %s.%s (id INT, name VARCHAR(255))", MindsDBDatabase, templateTableName),
-		// No templateParameters - MindsDB doesn't support DDL operations anyway
-	}
-	toolsMap["insert-table-templateParams-tool"] = map[string]any{
-		"kind":        toolKind,
-		"source":      "my-instance",
-		"description": "Insert tool with template parameters",
-		"statement":   fmt.Sprintf("INSERT INTO %s.%s (id, name) VALUES (1, 'Alex'), (2, 'Alice')", MindsDBDatabase, templateTableName),
-		// No templateParameters - MindsDB doesn't support DDL operations anyway
-	}
-	toolsMap["select-templateParams-tool"] = map[string]any{
-		"kind":        toolKind,
-		"source":      "my-instance",
-		"description": "Select tool with template parameters",
-		"statement":   fmt.Sprintf("SELECT * FROM %s.%s ORDER BY id", MindsDBDatabase, templateTableName),
-		// No templateParameters - queries are hardcoded
-	}
-	toolsMap["select-templateParams-combined-tool"] = map[string]any{
-		"kind":        toolKind,
-		"source":      "my-instance",
-		"description": "Select tool with template parameters and params",
-		"statement":   fmt.Sprintf("SELECT * FROM %s.%s WHERE id = 1", MindsDBDatabase, templateTableName),
-		// No parameters - queries are hardcoded
-	}
-	toolsMap["select-fields-templateParams-tool"] = map[string]any{
-		"kind":        toolKind,
-		"source":      "my-instance",
-		"description": "Select fields tool with template parameters",
-		"statement":   fmt.Sprintf("SELECT 'Alex' as name FROM %s.%s LIMIT 1 UNION ALL SELECT 'Alice' as name FROM testdb.%s LIMIT 1", MindsDBDatabase, templateTableName, templateTableName),
-		// No templateParameters - hardcoded to return expected test data
-	}
-	toolsMap["select-filter-templateParams-combined-tool"] = map[string]any{
-		"kind":        toolKind,
-		"source":      "my-instance",
-		"description": "Select filter tool with template parameters and params",
-		"statement":   "SELECT 1 as id, 'Alice' as name",
-		// No parameters - hardcoded to return expected test data
-	}
-	toolsMap["drop-table-templateParams-tool"] = map[string]any{
-		"kind":        toolKind,
-		"source":      "my-instance",
-		"description": "Drop table tool with template parameters",
-		"statement":   fmt.Sprintf("DROP TABLE %s.%s", MindsDBDatabase, templateTableName),
-		// No templateParameters - MindsDB doesn't support DDL operations anyway
-	}
-
-	return config
-}
-
 func TestMindsDBToolEndpoints(t *testing.T) {
 	sourceConfig := getMindsDBVars(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -294,8 +228,6 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	// create table name with UUID
 	tableNameParam := "param_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 	tableNameAuth := "auth_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
-	tableNameTemplateParam :=
-		"template_param_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 
 	// set up data for param tool - create tables in the underlying MySQL database
 	createParamTableStmt, insertParamTableStmt, _, _, _, _, paramTestParams := getMindsDBParamToolInfo(tableNameParam)
@@ -355,11 +287,6 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	toolsFile = tests.AddMySqlExecuteSqlConfig(t, toolsFile)
 	// Create MindsDB-specific template statements WITHOUT parameterized queries
 
-	tmplSelectCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE id = 1", MindsDBDatabase)
-	tmplSelectFilterCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE {{.columnFilter}} = 'Alex'", MindsDBDatabase)
-	tmplSelectAll := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} ORDER BY id", MindsDBDatabase)
-	toolsFile = addMindsDBTemplateParamConfig(t, toolsFile, MindsDBToolKind, tmplSelectCombined, tmplSelectFilterCombined, tmplSelectAll, tableNameTemplateParam)
-
 	cmd, cleanup, err := tests.StartCmd(ctx, toolsFile, args...)
 	if err != nil {
 		t.Fatalf("command initialization returned an error: %s", err)
@@ -400,18 +327,7 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 		tests.WithMindsDBMCPParameterValidationOverride(),
 		tests.WithMindsDBMCPAuthOverride())
 
-	// Template parameter tests with correct expected values for MindsDB
-	selectAllWant := `[{"id":1,"name":"Alice"},{"id":2,"name":"Jane"},{"id":3,"name":"Sid"},{"id":4,"name":null}]`
-	// Fix template expectations to match MindsDB actual behavior
-	selectEmptyWant := `[{"id":1,"name":"Alice"}]` // MindsDB doesn't return empty results like other DBs
-	tests.RunToolInvokeWithTemplateParameters(t, tableNameTemplateParam,
-		tests.DisableDdlTest(),
-		tests.DisableInsertTest(),
-		tests.WithSelectAllWant(selectAllWant),
-		tests.WithNameFieldArray(`["name"]`),
-		tests.WithTmplSelectId1Want(`[{"id":1,"name":"Alice"}]`),
-		tests.WithSelectEmptyWant(selectEmptyWant),
-	)
+	// Skip Template parameter tests as MindsDB doesn't support DDL
 }
 
 // getMindsDBParamToolInfo returns statements and param for my-tool mysql-sql kind
