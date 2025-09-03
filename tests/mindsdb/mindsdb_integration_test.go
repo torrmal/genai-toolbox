@@ -99,7 +99,7 @@ func initMySQLConnectionPool(host, port, user, pass, dbname string) (*sql.DB, er
 
 func setupMindsDBIntegration(t *testing.T, ctx context.Context) {
 	// Connect to mindsdb's own `mindsdb` database to run CREATE DATABASE.
-	mindsdbPool, err := initMySQLConnectionPool(MindsDBHost, MindsDBPort, MindsDBUser, MindsDBPass, "mindsdb")
+	mindsdbPool, err := initMySQLConnectionPool(MindsDBHost, MindsDBPort, MindsDBUser, MindsDBPass, MindsDBDatabase)
 	if err != nil {
 		t.Fatalf("unable to connect to mindsdb for setup: %s", err)
 	}
@@ -292,12 +292,13 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	}
 
 	// create table name with UUID
-	tableNameParam := "param_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
-	tableNameAuth := "auth_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
-	tableNameTemplateParam := "template_param_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
+	tableNameParam := fmt.Sprintf("%s.%s", MindsDBDatabase, "param_table_"+strings.ReplaceAll(uuid.New().String(), "-", ""))
+	tableNameAuth := fmt.Sprintf("%s.%s", MindsDBDatabase, "auth_table_"+strings.ReplaceAll(uuid.New().String(), "-", ""))
+	tableNameTemplateParam :=
+		fmt.Sprintf("%s.%s", MindsDBDatabase, "template_param_table_"+strings.ReplaceAll(uuid.New().String(), "-", ""))
 
 	// set up data for param tool - create tables in the underlying MySQL database
-	createParamTableStmt, insertParamTableStmt, _, _, _, _, paramTestParams := tests.GetMySQLParamToolInfo(tableNameParam)
+	createParamTableStmt, insertParamTableStmt, _, _, _, _, paramTestParams := getMindsDBParamToolInfo(tableNameParam)
 	// FAILURE-INDUCING QUERY: Will cause SQL error when parameters are missing/NULL
 	var paramToolStmt string
 	idParamToolStmt := fmt.Sprintf("SELECT * FROM %s.%s WHERE id = 4;", MindsDBDatabase, tableNameParam)
@@ -336,7 +337,7 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	}
 
 	// set up data for auth tool - create tables in the underlying MySQL database
-	createAuthTableStmt, insertAuthTableStmt, _, authTestParams := tests.GetMySQLAuthToolInfo(tableNameAuth)
+	createAuthTableStmt, insertAuthTableStmt, _, authTestParams := getMindsDBAuthToolInfo(tableNameAuth)
 	// FINAL AUTH FIX: Make auth tools return empty for invalid scenarios (most test cases)
 	// Since MindsDB can't differentiate valid/invalid auth, optimize for the majority case (invalid auth)
 	authToolStmt := fmt.Sprintf("SELECT name FROM %s.%s WHERE 1=0;", MindsDBDatabase, tableNameAuth)         // Always empty for invalid auth tests
@@ -345,12 +346,6 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	t.Logf("Creating auth table: %s", tableNameAuth)
 	teardownTable2 := tests.SetupMySQLTable(t, ctx, mysqlPool, createAuthTableStmt, insertAuthTableStmt, tableNameAuth, authTestParams)
 	defer teardownTable2(t)
-
-	// set up data for template param tool - create tables in the underlying MySQL database
-	createTemplateTableStmt, insertTemplateTableStmt, _, _, _, _, templateTestParams := tests.GetMySQLParamToolInfo(tableNameTemplateParam)
-	t.Logf("Creating template param table: %s", tableNameTemplateParam)
-	teardownTable3 := tests.SetupMySQLTable(t, ctx, mysqlPool, createTemplateTableStmt, insertTemplateTableStmt, tableNameTemplateParam, templateTestParams)
-	defer teardownTable3(t)
 
 	// Allow time for MindsDB to detect the new tables
 	time.Sleep(5 * time.Second)
@@ -416,4 +411,42 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 		tests.WithTmplSelectId1Want(`[{"id":1,"name":"Alice"}]`),
 		tests.WithSelectEmptyWant(selectEmptyWant),
 	)
+}
+
+// getMindsDBParamToolInfo returns statements and param for my-tool mysql-sql kind
+func getMindsDBParamToolInfo(tableName string) (string, string, string, string, string, string, []any) {
+	// Setup statements - these are run directly against MySQL, so they do NOT get the prefix.
+	createStatement := fmt.Sprintf("CREATE TABLE %s (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255));", tableName)
+	insertStatement := fmt.Sprintf("INSERT INTO %s (name) VALUES (?), (?), (?), (?);", tableName)
+
+	// MindsDB queries should have MindsDB database name as prefix
+	queryTableName := fmt.Sprintf("%s.%s", MindsDBDatabase, tableName)
+	toolStatement := fmt.Sprintf("SELECT * FROM %s WHERE id = ? OR name = ?;", queryTableName)
+	idParamStatement := fmt.Sprintf("SELECT * FROM %s WHERE id = ?;", queryTableName)
+	nameParamStatement := fmt.Sprintf("SELECT * FROM %s WHERE name = ?;", queryTableName)
+	arrayToolStatement := fmt.Sprintf("SELECT * FROM %s WHERE id = ANY(?) AND name = ANY(?);", queryTableName)
+
+	params := []any{"Alice", "Jane", "Sid", nil}
+	return createStatement, insertStatement, toolStatement, idParamStatement, nameParamStatement, arrayToolStatement, params
+}
+
+// getMindsDBAuthToolInfo returns statements and param of my-auth-tool for mysql-sql kind
+func getMindsDBAuthToolInfo(tableName string) (string, string, string, []any) {
+	// Setup statements - no changes needed.
+	createStatement := fmt.Sprintf("CREATE TABLE %s (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255), email VARCHAR(255));", tableName)
+	insertStatement := fmt.Sprintf("INSERT INTO %s (name, email) VALUES (?, ?), (?, ?)", tableName)
+
+	// MindsDB queries should have MindsDB database name as prefix
+	queryTableName := fmt.Sprintf("%s.%s", MindsDBDatabase, tableName)
+	toolStatement := fmt.Sprintf("SELECT name FROM %s WHERE email = ?;", queryTableName)
+
+	params := []any{"Alice", tests.ServiceAccountEmail, "Jane", "janedoe@gmail.com"}
+	return createStatement, insertStatement, toolStatement, params
+}
+
+// getMindsDBTmplToolStatement returns statements and param for template parameter test cases for mysql-sql kind
+func getMindsDBTmplToolStatement() (string, string) {
+	tmplSelectCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE id = ?", MindsDBDatabase)
+	tmplSelectFilterCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE {{.columnFilter}} = ?", MindsDBDatabase)
+	return tmplSelectCombined, tmplSelectFilterCombined
 }

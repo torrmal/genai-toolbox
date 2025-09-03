@@ -779,4 +779,4 @@ substitutions:
   _OCEANBASE_PORT: "2883"
   _OCEANBASE_DATABASE: "oceanbase"
   _MINDSDB_PORT: "47335"
-  _MINDSDB_DATABASE: "mindsdb"
+  _MINDSDB_DATABASE: "mindsdb_test"
