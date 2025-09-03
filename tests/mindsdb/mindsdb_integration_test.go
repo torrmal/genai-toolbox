@@ -206,9 +206,9 @@ func GetMindsDBToolsConfig(sourceConfig map[string]any, toolKind, paramToolState
 	}
 }
 
-// AddMindsDBTemplateParamConfig creates MindsDB-specific template tools without parameters
+// addMindsDBTemplateParamConfig creates MindsDB-specific template tools without parameters
 // since MindsDB queries use hardcoded values instead of parameter placeholders
-func AddMindsDBTemplateParamConfig(t *testing.T, config map[string]any, toolKind, tmplSelectCombined, tmplSelectFilterCombined string, tmplSelectAll string, templateTableName string) map[string]any {
+func addMindsDBTemplateParamConfig(t *testing.T, config map[string]any, toolKind, tmplSelectCombined, tmplSelectFilterCombined string, tmplSelectAll string, templateTableName string) map[string]any {
 	toolsMap, ok := config["tools"].(map[string]any)
 	if !ok {
 		t.Fatalf("unable to get tools from config")
@@ -223,35 +223,35 @@ func AddMindsDBTemplateParamConfig(t *testing.T, config map[string]any, toolKind
 		"kind":        toolKind,
 		"source":      "my-instance",
 		"description": "Create table tool with template parameters",
-		"statement":   fmt.Sprintf("CREATE TABLE testdb.%s (id INT, name VARCHAR(255))", templateTableName),
+		"statement":   fmt.Sprintf("CREATE TABLE %s.%s (id INT, name VARCHAR(255))", templateTableName),
 		// No templateParameters - MindsDB doesn't support DDL operations anyway
 	}
 	toolsMap["insert-table-templateParams-tool"] = map[string]any{
 		"kind":        toolKind,
 		"source":      "my-instance",
 		"description": "Insert tool with template parameters",
-		"statement":   fmt.Sprintf("INSERT INTO testdb.%s (id, name) VALUES (1, 'Alex'), (2, 'Alice')", templateTableName),
+		"statement":   fmt.Sprintf("INSERT INTO %s.%s (id, name) VALUES (1, 'Alex'), (2, 'Alice')", MindsDBDatabase, templateTableName),
 		// No templateParameters - MindsDB doesn't support DDL operations anyway
 	}
 	toolsMap["select-templateParams-tool"] = map[string]any{
 		"kind":        toolKind,
 		"source":      "my-instance",
 		"description": "Select tool with template parameters",
-		"statement":   fmt.Sprintf("SELECT * FROM testdb.%s ORDER BY id", templateTableName),
+		"statement":   fmt.Sprintf("SELECT * FROM %s.%s ORDER BY id", MindsDBDatabase, templateTableName),
 		// No templateParameters - queries are hardcoded
 	}
 	toolsMap["select-templateParams-combined-tool"] = map[string]any{
 		"kind":        toolKind,
 		"source":      "my-instance",
 		"description": "Select tool with template parameters and params",
-		"statement":   fmt.Sprintf("SELECT * FROM testdb.%s WHERE id = 1", templateTableName),
+		"statement":   fmt.Sprintf("SELECT * FROM %s.%s WHERE id = 1", MindsDBDatabase, templateTableName),
 		// No parameters - queries are hardcoded
 	}
 	toolsMap["select-fields-templateParams-tool"] = map[string]any{
 		"kind":        toolKind,
 		"source":      "my-instance",
 		"description": "Select fields tool with template parameters",
-		"statement":   fmt.Sprintf("SELECT 'Alex' as name FROM testdb.%s LIMIT 1 UNION ALL SELECT 'Alice' as name FROM testdb.%s LIMIT 1", templateTableName, templateTableName),
+		"statement":   fmt.Sprintf("SELECT 'Alex' as name FROM %s.%s LIMIT 1 UNION ALL SELECT 'Alice' as name FROM testdb.%s LIMIT 1", MindsDBDatabase, templateTableName, templateTableName),
 		// No templateParameters - hardcoded to return expected test data
 	}
 	toolsMap["select-filter-templateParams-combined-tool"] = map[string]any{
@@ -265,7 +265,7 @@ func AddMindsDBTemplateParamConfig(t *testing.T, config map[string]any, toolKind
 		"kind":        toolKind,
 		"source":      "my-instance",
 		"description": "Drop table tool with template parameters",
-		"statement":   fmt.Sprintf("DROP TABLE testdb.%s", templateTableName),
+		"statement":   fmt.Sprintf("DROP TABLE %s.%s", MindsDBDatabase, templateTableName),
 		// No templateParameters - MindsDB doesn't support DDL operations anyway
 	}
 
@@ -354,10 +354,11 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	toolsFile := GetMindsDBToolsConfig(sourceConfig, MindsDBToolKind, paramToolStmt, idParamToolStmt, nameParamToolStmt, arrayToolStmt, authToolStmt, authRequiredToolStmt)
 	toolsFile = tests.AddMySqlExecuteSqlConfig(t, toolsFile)
 	// Create MindsDB-specific template statements WITHOUT parameterized queries
+
 	tmplSelectCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE id = 1", MindsDBDatabase)
 	tmplSelectFilterCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE {{.columnFilter}} = 'Alex'", MindsDBDatabase)
 	tmplSelectAll := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} ORDER BY id", MindsDBDatabase)
-	toolsFile = AddMindsDBTemplateParamConfig(t, toolsFile, MindsDBToolKind, tmplSelectCombined, tmplSelectFilterCombined, tmplSelectAll, tableNameTemplateParam)
+	toolsFile = addMindsDBTemplateParamConfig(t, toolsFile, MindsDBToolKind, tmplSelectCombined, tmplSelectFilterCombined, tmplSelectAll, tableNameTemplateParam)
 
 	cmd, cleanup, err := tests.StartCmd(ctx, toolsFile, args...)
 	if err != nil {
@@ -442,13 +443,6 @@ func getMindsDBAuthToolInfo(tableName string) (string, string, string, []any) {
 
 	params := []any{"Alice", tests.ServiceAccountEmail, "Jane", "janedoe@gmail.com"}
 	return createStatement, insertStatement, toolStatement, params
-}
-
-// getMindsDBTmplToolStatement returns statements and param for template parameter test cases for mysql-sql kind
-func getMindsDBTmplToolStatement() (string, string) {
-	tmplSelectCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE id = ?", MindsDBDatabase)
-	tmplSelectFilterCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE {{.columnFilter}} = ?", MindsDBDatabase)
-	return tmplSelectCombined, tmplSelectFilterCombined
 }
 
 // getMindsDBWants return the expected wants for MindsDB
