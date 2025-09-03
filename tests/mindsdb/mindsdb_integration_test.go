@@ -292,10 +292,10 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	}
 
 	// create table name with UUID
-	tableNameParam := fmt.Sprintf("%s.%s", MindsDBDatabase, "param_table_"+strings.ReplaceAll(uuid.New().String(), "-", ""))
-	tableNameAuth := fmt.Sprintf("%s.%s", MindsDBDatabase, "auth_table_"+strings.ReplaceAll(uuid.New().String(), "-", ""))
+	tableNameParam := "param_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
+	tableNameAuth := "auth_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 	tableNameTemplateParam :=
-		fmt.Sprintf("%s.%s", MindsDBDatabase, "template_param_table_"+strings.ReplaceAll(uuid.New().String(), "-", ""))
+		"template_param_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 
 	// set up data for param tool - create tables in the underlying MySQL database
 	createParamTableStmt, insertParamTableStmt, _, _, _, _, paramTestParams := getMindsDBParamToolInfo(tableNameParam)
@@ -375,7 +375,7 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 
 	tests.RunToolGetTest(t)
 
-	select1Want, mcpMyFailToolWant, _ := tests.GetMindsDBWants()
+	select1Want, mcpMyFailToolWant, _ := getMindsDBWants()
 
 	// FINAL PRAGMATIC APPROACH: Use existing test framework with MindsDB-optimized expectations
 	myToolId3NameAliceWant := `[{"id":1,"name":"Alice"},{"id":3,"name":"Sid"}]`
@@ -449,4 +449,14 @@ func getMindsDBTmplToolStatement() (string, string) {
 	tmplSelectCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE id = ?", MindsDBDatabase)
 	tmplSelectFilterCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE {{.columnFilter}} = ?", MindsDBDatabase)
 	return tmplSelectCombined, tmplSelectFilterCombined
+}
+
+// getMindsDBWants return the expected wants for MindsDB
+func getMindsDBWants() (string, string, string) {
+	select1Want := "[{\"1\":1}]"
+	// MindsDB has different error message format for syntax errors - exact format from CI logs
+	mcpMyFailToolWant := `{"jsonrpc":"2.0","id":"invoke-fail-tool","result":{"content":[{"type":"text","text":"unable to execute query: Error 1149: The SQL statement cannot be parsed - SELEC 1: Syntax error, unknown input:\n\u003eSELEC 1\n-^^^^^"}],"isError":true}}`
+	// Use same CREATE TABLE as MySQL for execute sql test
+	createTableStatement := `"CREATE TABLE t (id SERIAL PRIMARY KEY, name TEXT)"`
+	return select1Want, mcpMyFailToolWant, createTableStatement
 }
