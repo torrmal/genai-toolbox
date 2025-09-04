@@ -139,100 +139,6 @@ func setupMindsDBIntegration(t *testing.T, ctx context.Context) {
 	})
 }
 
-// GetMindsDBToolsConfig creates a MindsDB-specific tools config with different auth queries
-// since MindsDB queries use hardcoded values instead of ? placeholders
-func GetMindsDBToolsConfig(sourceConfig map[string]any, toolKind, paramToolStatement, idParamToolStatement, nameParamToolStatement, arrayToolStatement, authToolStatement string) map[string]any {
-	return map[string]any{
-		"sources": map[string]any{
-			"my-instance": sourceConfig,
-		},
-		"tools": map[string]any{
-			"my-simple-tool": map[string]any{
-				"kind":        toolKind,
-				"source":      "my-instance",
-				"description": "Simple tool to test end to end functionality.",
-				"statement":   "SELECT 1",
-			},
-			"my-tool": map[string]any{
-				"kind":        toolKind,
-				"source":      "my-instance",
-				"description": "Tool to test invocation with params.",
-				"statement":   paramToolStatement,
-				// NO PARAMETERS - MindsDB fundamentally cannot support parameter validation
-			},
-			"my-tool-by-id": map[string]any{
-				"kind":        toolKind,
-				"source":      "my-instance",
-				"description": "Tool to test invocation with params.",
-				"statement":   idParamToolStatement,
-				// No parameters - query is hardcoded
-			},
-			"my-tool-by-name": map[string]any{
-				"kind":        toolKind,
-				"source":      "my-instance",
-				"description": "Tool to test invocation with params.",
-				"statement":   nameParamToolStatement,
-				// No parameters - query is hardcoded
-			},
-			"my-array-tool": map[string]any{
-				"kind":        toolKind,
-				"source":      "my-instance",
-				"description": "Tool to test invocation with array params.",
-				"statement":   arrayToolStatement,
-				// No parameters - query is hardcoded
-			},
-			"my-auth-tool": map[string]any{
-				"kind":        toolKind,
-				"source":      "my-instance",
-				"description": "Tool to test invocation with authenticated params.",
-				"statement":   authToolStatement,
-				"parameters": []map[string]any{
-					{
-						"name":        "email",
-						"type":        "string",
-						"description": "user email",
-						"authServices": []map[string]string{
-							{
-								"name":  "my-google-auth",
-								"field": "email",
-							},
-						},
-					},
-				},
-			},
-			"my-auth-required-tool": map[string]any{
-				"kind":        toolKind,
-				"source":      "my-instance",
-				"description": "Tool to test invocation with authenticated params and auth required.",
-				"statement":   "SELECT 1",
-				"authRequired": []string{
-					"my-google-auth",
-				},
-			},
-			"my-fail-tool": map[string]any{
-				"kind":        toolKind,
-				"source":      "my-instance",
-				"description": "Tool that fails",
-				"statement":   "SELEC 1;", // Intentional typo
-			},
-
-			"my-exec-sql-tool": map[string]any{
-				"kind":        "mindsdb-execute-sql",
-				"source":      "my-instance",
-				"description": "Tool to execute sql",
-			},
-			"my-auth-exec-sql-tool": map[string]any{
-				"kind":        "mindsdb-execute-sql",
-				"source":      "my-instance",
-				"description": "Tool to execute sql",
-				"authRequired": []string{
-					"my-google-auth",
-				},
-			},
-		},
-	}
-}
-
 func TestMindsDBToolEndpoints(t *testing.T) {
 	sourceConfig := getMindsDBVars(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -255,60 +161,39 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	// create table name with UUID
 	tableNameParam := "param_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 	tableNameAuth := "auth_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
+	tableNameTemplateParam := "template_param_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 
-	// set up data for param tool - create tables in the underlying MySQL database
-	createParamTableStmt, insertParamTableStmt, _, _, _, _, paramTestParams := getMindsDBParamToolInfo(tableNameParam)
-	// FAILURE-INDUCING QUERY: Will cause SQL error when parameters are missing/NULL
-	var paramToolStmt string
-	idParamToolStmt := fmt.Sprintf("SELECT * FROM %s.%s WHERE id = 4;", MindsDBDatabase, tableNameParam)
-	nameParamToolStmt := fmt.Sprintf("SELECT * FROM %s.%s WHERE name IS NULL;", MindsDBDatabase, tableNameParam)
-	arrayToolStmt := fmt.Sprintf("SELECT * FROM %s.%s WHERE id IN (1,3) AND name IN ('Alice','Sid');", MindsDBDatabase, tableNameParam)
+	// set up data for param tool using standard MySQL functions
+	createParamTableStmt, insertParamTableStmt, _, _, _, _, paramTestParams := tests.GetMySQLParamToolInfo(tableNameParam)
 
-	t.Logf("Creating param table: %s", tableNameParam)
+	// Create query statements with MindsDB database prefix for table references
+	mindsdbTableName := fmt.Sprintf("%s.%s", MindsDBDatabase, tableNameParam)
+	paramToolStmt := fmt.Sprintf("SELECT * FROM %s WHERE id = ? OR name = ?;", mindsdbTableName)
+	idParamToolStmt := fmt.Sprintf("SELECT * FROM %s WHERE id = ?;", mindsdbTableName)
+	nameParamToolStmt := fmt.Sprintf("SELECT * FROM %s WHERE name = ?;", mindsdbTableName)
+	arrayToolStmt := fmt.Sprintf("SELECT * FROM %s WHERE id = ANY(?) AND name = ANY(?);", mindsdbTableName)
 	teardownTable1 := tests.SetupMySQLTable(t, ctx, mysqlPool, createParamTableStmt, insertParamTableStmt, tableNameParam, paramTestParams)
 	defer teardownTable1(t)
 
-	// FINAL ATTEMPT: Create MySQL stored procedure for smart parameter handling
-	procedureName := "smart_param_query_" + strings.ReplaceAll(uuid.New().String(), "-", "")[:8]
-	createProcedureStmt := fmt.Sprintf(`
-		CREATE PROCEDURE %s(IN p_id INT, IN p_name VARCHAR(255))
-		BEGIN
-			IF p_id IS NULL OR p_name IS NULL THEN
-				SELECT * FROM %s WHERE 1=0;
-			ELSE
-				SELECT * FROM %s WHERE id = p_id OR name = p_name;
-			END IF;
-		END`, procedureName, tableNameParam, tableNameParam)
+	// set up data for auth tool
+	createAuthTableStmt, insertAuthTableStmt, _, authTestParams := tests.GetMySQLAuthToolInfo(tableNameAuth)
 
-	t.Logf("Creating stored procedure: %s", procedureName)
-	_, err = mysqlPool.Exec(createProcedureStmt)
-	if err != nil {
-		t.Logf("Failed to create stored procedure: %v", err)
-		// Fallback to hardcoded query if procedure creation fails
-		paramToolStmt = fmt.Sprintf("SELECT * FROM %s.%s WHERE id IN (1,3) AND name IN ('Alice','Sid');", MindsDBDatabase, tableNameParam)
-	} else {
-		// HARDCODED QUERY - MindsDB cannot support parameterized queries reliably
-		t.Logf("Using hardcoded query - MindsDB limitation")
-		paramToolStmt = fmt.Sprintf("SELECT * FROM %s.%s WHERE id IN (1,3) AND name IN ('Alice','Sid');", MindsDBDatabase, tableNameParam)
-		defer func() {
-			_, _ = mysqlPool.Exec(fmt.Sprintf("DROP PROCEDURE IF EXISTS %s", procedureName))
-		}()
-	}
-
-	// set up data for auth tool - create tables in the underlying MySQL database
-	createAuthTableStmt, insertAuthTableStmt, authToolStmt, authTestParams := getMindsDBAuthToolInfo(tableNameAuth)
-
-	t.Logf("Creating auth table: %s", tableNameAuth)
+	// Create auth query statement with MindsDB database prefix for table references
+	mindsdbAuthTableName := fmt.Sprintf("%s.%s", MindsDBDatabase, tableNameAuth)
+	authToolStmt := fmt.Sprintf("SELECT name FROM %s WHERE email = ?;", mindsdbAuthTableName)
 	teardownTable2 := tests.SetupMySQLTable(t, ctx, mysqlPool, createAuthTableStmt, insertAuthTableStmt, tableNameAuth, authTestParams)
 	defer teardownTable2(t)
 
 	// Allow time for MindsDB to detect the new tables
 	time.Sleep(5 * time.Second)
 
-	// Create custom MindsDB tools config with different auth queries
-	toolsFile := GetMindsDBToolsConfig(sourceConfig, MindsDBToolKind, paramToolStmt, idParamToolStmt, nameParamToolStmt, arrayToolStmt, authToolStmt)
+	// Write config into a file and pass it to command - use standard tools config
+	toolsFile := tests.GetToolsConfig(sourceConfig, MindsDBToolKind, paramToolStmt, idParamToolStmt, nameParamToolStmt, arrayToolStmt, authToolStmt)
 	toolsFile = tests.AddMySqlExecuteSqlConfig(t, toolsFile)
-	// Create MindsDB-specific template statements WITHOUT parameterized queries
+	// Create MindsDB-specific template statements with database prefix
+	tmplSelectCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE id = ?", MindsDBDatabase)
+	tmplSelectFilterCombined := fmt.Sprintf("SELECT * FROM %s.{{.tableName}} WHERE {{.columnFilter}} = ?", MindsDBDatabase)
+	toolsFile = tests.AddTemplateParamConfig(t, toolsFile, MindsDBToolKind, tmplSelectCombined, tmplSelectFilterCombined, "")
 
 	cmd, cleanup, err := tests.StartCmd(ctx, toolsFile, args...)
 	if err != nil {
@@ -324,66 +209,13 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 		t.Fatalf("toolbox didn't start successfully: %s", err)
 	}
 
+	// Get configs for tests - use standard MySQL expectations
+	select1Want, mcpMyFailToolWant, createTableStatement, mcpSelect1Want := tests.GetMySQLWants()
+
+	// Run tests without disabled options - MindsDB should support the same features as MySQL
 	tests.RunToolGetTest(t)
-
-	select1Want, mcpMyFailToolWant, createTableStatement := getMindsDBWants()
-
-	// FINAL PRAGMATIC APPROACH: Use existing test framework with MindsDB-optimized expectations
-	myToolId3NameAliceWant := `[{"id":1,"name":"Alice"},{"id":3,"name":"Sid"}]`
-	myToolById4Want := `[{"id":4,"name":null}]`
-	nullWant := `[{"id":4,"name":null}]`
-	tests.RunToolInvokeTest(t, select1Want,
-		tests.DisableArrayTest(),
-		tests.DisableOptionalNullParamTest(), // MindsDB limitations with parameter validation
-		tests.WithMyToolId3NameAliceWant(myToolId3NameAliceWant),
-		tests.WithMyToolById4Want(myToolById4Want),
-		tests.WithNullWant(nullWant),
-	)
-	// Skip ExecuteSQL tests for MindsDB as it should not perform DDL operations
-	// Tables should be created in the underlying MySQL database, not through MindsDB
-	tests.RunMCPToolCallMethod(t, mcpMyFailToolWant, select1Want,
-		tests.WithMcpMyToolId3NameAliceWant(`{"jsonrpc":"2.0","id":"my-tool","result":{"content":[{"type":"text","text":"{\"id\":1,\"name\":\"Alice\"}"},{"type":"text","text":"{\"id\":3,\"name\":\"Sid\"}"}]}}`))
-
+	tests.RunToolInvokeTest(t, select1Want)
+	tests.RunMCPToolCallMethod(t, mcpMyFailToolWant, mcpSelect1Want)
 	tests.RunExecuteSqlToolInvokeTest(t, createTableStatement, select1Want)
-}
-
-// getMindsDBParamToolInfo returns statements and param for my-tool mysql-sql kind
-func getMindsDBParamToolInfo(tableName string) (string, string, string, string, string, string, []any) {
-	// Setup statements - these are run directly against MySQL, so they do NOT get the prefix.
-	createStatement := fmt.Sprintf("CREATE TABLE %s (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255));", tableName)
-	insertStatement := fmt.Sprintf("INSERT INTO %s (name) VALUES (?), (?), (?), (?);", tableName)
-
-	// MindsDB queries should have MindsDB database name as prefix
-	queryTableName := fmt.Sprintf("%s.%s", MindsDBDatabase, tableName)
-	toolStatement := fmt.Sprintf("SELECT * FROM %s WHERE id = ? OR name = ?;", queryTableName)
-	idParamStatement := fmt.Sprintf("SELECT * FROM %s WHERE id = ?;", queryTableName)
-	nameParamStatement := fmt.Sprintf("SELECT * FROM %s WHERE name = ?;", queryTableName)
-	arrayToolStatement := fmt.Sprintf("SELECT * FROM %s WHERE id = ANY(?) AND name = ANY(?);", queryTableName)
-
-	params := []any{"Alice", "Jane", "Sid", nil}
-	return createStatement, insertStatement, toolStatement, idParamStatement, nameParamStatement, arrayToolStatement, params
-}
-
-// getMindsDBAuthToolInfo returns statements and param of my-auth-tool for mysql-sql kind
-func getMindsDBAuthToolInfo(tableName string) (string, string, string, []any) {
-	// Setup statements - no changes needed.
-	createStatement := fmt.Sprintf("CREATE TABLE %s (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255), email VARCHAR(255));", tableName)
-	insertStatement := fmt.Sprintf("INSERT INTO %s (name, email) VALUES (?, ?), (?, ?)", tableName)
-
-	// MindsDB queries should have MindsDB database name as prefix
-	queryTableName := fmt.Sprintf("%s.%s", MindsDBDatabase, tableName)
-	toolStatement := fmt.Sprintf("SELECT name FROM %s WHERE email = ?;", queryTableName)
-
-	params := []any{"Alice", tests.ServiceAccountEmail, "Jane", "janedoe@gmail.com"}
-	return createStatement, insertStatement, toolStatement, params
-}
-
-// getMindsDBWants return the expected wants for MindsDB
-func getMindsDBWants() (string, string, string) {
-	select1Want := "[{\"1\":1}]"
-	// MindsDB has different error message format for syntax errors - exact format from CI logs
-	mcpMyFailToolWant := `{"jsonrpc":"2.0","id":"invoke-fail-tool","result":{"content":[{"type":"text","text":"unable to execute query: Error 1149: The SQL statement cannot be parsed - SELEC 1: Syntax error, unknown input:\n\u003eSELEC 1\n-^^^^^"}],"isError":true}}`
-	// Use same CREATE TABLE as MySQL for execute sql test
-	createTableStatement := `"CREATE TABLE t (id SERIAL PRIMARY KEY, name TEXT)"`
-	return select1Want, mcpMyFailToolWant, createTableStatement
+	tests.RunToolInvokeWithTemplateParameters(t, tableNameTemplateParam)
 }
