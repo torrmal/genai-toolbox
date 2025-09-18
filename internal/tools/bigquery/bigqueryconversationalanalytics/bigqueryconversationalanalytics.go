@@ -54,8 +54,13 @@ func newConfig(ctx context.Context, name string, decoder *yaml.Decoder) (tools.T
 
 type compatibleSource interface {
 	BigQueryClient() *bigqueryapi.Client
-	BigQueryTokenSource() oauth2.TokenSource
+	BigQueryTokenSourceWithScope(ctx context.Context, scope string) (oauth2.TokenSource, error)
+	BigQueryProject() string
+	BigQueryLocation() string
 	GetMaxQueryResultRows() int
+	UseClientAuthorization() bool
+	IsDatasetAllowed(projectID, datasetID string) bool
+	BigQueryAllowedDatasets() []string
 }
 
 type BQTableReference struct {
@@ -95,6 +100,7 @@ type CAPayload struct {
 	Project       string        `json:"project"`
 	Messages      []Message     `json:"messages"`
 	InlineContext InlineContext `json:"inlineContext"`
+	ClientIdEnum  string        `json:"clientIdEnum"`
 }
 
 // validate compatible sources are still compatible
@@ -130,8 +136,17 @@ func (cfg Config) Initialize(srcs map[string]sources.Source) (tools.Tool, error)
 		return nil, fmt.Errorf("invalid source for %q tool: source kind must be one of %q", kind, compatibleSources)
 	}
 
+	allowedDatasets := s.BigQueryAllowedDatasets()
+	tableRefsDescription := `A JSON string of a list of BigQuery tables to use as context. Each object in the list must contain 'projectId', 'datasetId', and 'tableId'. Example: '[{"projectId": "my-gcp-project", "datasetId": "my_dataset", "tableId": "my_table"}]'.`
+	if len(allowedDatasets) > 0 {
+		datasetIDs := []string{}
+		for _, ds := range allowedDatasets {
+			datasetIDs = append(datasetIDs, fmt.Sprintf("`%s`", ds))
+		}
+		tableRefsDescription += fmt.Sprintf(" The tables must only be from datasets in the following list: %s.", strings.Join(datasetIDs, ", "))
+	}
 	userQueryParameter := tools.NewStringParameter("user_query_with_context", "The user's question, potentially including conversation history and system instructions for context.")
-	tableRefsParameter := tools.NewStringParameter("table_references", `A JSON string of a list of BigQuery tables to use as context. Each object in the list must contain 'projectId', 'datasetId', and 'tableId'. Example: '[{"projectId": "my-gcp-project", "datasetId": "my_dataset", "tableId": "my_table"}]'`)
+	tableRefsParameter := tools.NewStringParameter("table_references", tableRefsDescription)
 
 	parameters := tools.Parameters{userQueryParameter, tableRefsParameter}
 
@@ -141,17 +156,33 @@ func (cfg Config) Initialize(srcs map[string]sources.Source) (tools.Tool, error)
 		InputSchema: parameters.McpManifest(),
 	}
 
+	// Get cloud-platform token source for Gemini Data Analytics API during initialization
+	var bigQueryTokenSourceWithScope oauth2.TokenSource
+	if !s.UseClientAuthorization() {
+		ctx := context.Background()
+		ts, err := s.BigQueryTokenSourceWithScope(ctx, "https://www.googleapis.com/auth/cloud-platform")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get cloud-platform token source: %w", err)
+		}
+		bigQueryTokenSourceWithScope = ts
+	}
+
 	// finish tool setup
 	t := Tool{
 		Name:               cfg.Name,
 		Kind:               kind,
+		Project:            s.BigQueryProject(),
+		Location:           s.BigQueryLocation(),
 		Parameters:         parameters,
 		AuthRequired:       cfg.AuthRequired,
 		Client:             s.BigQueryClient(),
-		TokenSource:        s.BigQueryTokenSource(),
+		UseClientOAuth:     s.UseClientAuthorization(),
+		TokenSource:        bigQueryTokenSourceWithScope,
 		manifest:           tools.Manifest{Description: cfg.Description, Parameters: parameters.Manifest(), AuthRequired: cfg.AuthRequired},
 		mcpManifest:        mcpManifest,
 		MaxQueryResultRows: s.GetMaxQueryResultRows(),
+		IsDatasetAllowed:   s.IsDatasetAllowed,
+		AllowedDatasets:    allowedDatasets,
 	}
 	return t, nil
 }
@@ -160,26 +191,47 @@ func (cfg Config) Initialize(srcs map[string]sources.Source) (tools.Tool, error)
 var _ tools.Tool = Tool{}
 
 type Tool struct {
-	Name               string           `yaml:"name"`
-	Kind               string           `yaml:"kind"`
-	AuthRequired       []string         `yaml:"authRequired"`
-	Parameters         tools.Parameters `yaml:"parameters"`
+	Name           string           `yaml:"name"`
+	Kind           string           `yaml:"kind"`
+	AuthRequired   []string         `yaml:"authRequired"`
+	UseClientOAuth bool             `yaml:"useClientOAuth"`
+	Parameters     tools.Parameters `yaml:"parameters"`
+
+	Project            string
+	Location           string
 	Client             *bigqueryapi.Client
 	TokenSource        oauth2.TokenSource
 	manifest           tools.Manifest
 	mcpManifest        tools.McpManifest
 	MaxQueryResultRows int
+	IsDatasetAllowed   func(projectID, datasetID string) bool
+	AllowedDatasets    []string
 }
 
 func (t Tool) Invoke(ctx context.Context, params tools.ParamValues, accessToken tools.AccessToken) (any, error) {
-	// Get credentials for the API call
-	if t.TokenSource == nil {
-		return nil, fmt.Errorf("authentication error: found credentials but they are missing a valid token source")
-	}
+	var tokenStr string
+	var err error
 
-	token, err := t.TokenSource.Token()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get token from credentials: %w", err)
+	// Get credentials for the API call
+	if t.UseClientOAuth {
+		// Use client-side access token
+		if accessToken == "" {
+			return nil, fmt.Errorf("tool is configured for client OAuth but no token was provided in the request header: %w", tools.ErrUnauthorized)
+		}
+		tokenStr, err = accessToken.ParseBearerToken()
+		if err != nil {
+			return nil, fmt.Errorf("error parsing access token: %w", err)
+		}
+	} else {
+		// Use cloud-platform token source for Gemini Data Analytics API
+		if t.TokenSource == nil {
+			return nil, fmt.Errorf("cloud-platform token source is missing")
+		}
+		token, err := t.TokenSource.Token()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get token from cloud-platform token source: %w", err)
+		}
+		tokenStr = token.AccessToken
 	}
 
 	// Extract parameters from the map
@@ -196,16 +248,24 @@ func (t Tool) Invoke(ctx context.Context, params tools.ParamValues, accessToken 
 		}
 	}
 
+	if len(t.AllowedDatasets) > 0 {
+		for _, tableRef := range tableRefs {
+			if !t.IsDatasetAllowed(tableRef.ProjectID, tableRef.DatasetID) {
+				return nil, fmt.Errorf("access to dataset '%s.%s' (from table '%s') is not allowed", tableRef.ProjectID, tableRef.DatasetID, tableRef.TableID)
+			}
+		}
+	}
+
 	// Construct URL, headers, and payload
-	projectID := t.Client.Project()
-	location := t.Client.Location
+	projectID := t.Project
+	location := t.Location
 	if location == "" {
 		location = "us"
 	}
 	caURL := fmt.Sprintf("https://geminidataanalytics.googleapis.com/v1alpha/projects/%s/locations/%s:chat", projectID, location)
 
 	headers := map[string]string{
-		"Authorization": fmt.Sprintf("Bearer %s", token.AccessToken),
+		"Authorization": fmt.Sprintf("Bearer %s", tokenStr),
 		"Content-Type":  "application/json",
 	}
 
@@ -218,6 +278,7 @@ func (t Tool) Invoke(ctx context.Context, params tools.ParamValues, accessToken 
 			},
 			Options: Options{Chart: ChartOptions{Image: ImageOptions{NoImage: map[string]any{}}}},
 		},
+		ClientIdEnum: "GENAI_TOOLBOX",
 	}
 
 	// Call the streaming API
@@ -246,7 +307,7 @@ func (t Tool) Authorized(verifiedAuthServices []string) bool {
 }
 
 func (t Tool) RequiresClientAuthorization() bool {
-	return false
+	return t.UseClientOAuth
 }
 
 // StreamMessage represents a single message object from the streaming API response.
