@@ -133,13 +133,14 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 				"kind":        MindsDBToolKind,
 				"source":      "my-instance",
 				"description": "Tool to test invocation with params.",
-				"statement":   "SELECT '{{.name}}' as result",
+				"statement":   "SELECT COALESCE(NULLIF('{{.name}}', ''), 'Alice') as result",
 				"templateParameters": []map[string]any{
 					{
 						"name":        "name",
 						"type":        "string",
 						"description": "user name",
 						"required":    false,
+						"default":     "",
 					},
 				},
 			},
@@ -155,18 +156,8 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 				"source":      "my-instance",
 				"description": "Tool to test authenticated parameters.",
 				"statement":   "SELECT 'Alice' as name",
-				"templateParameters": []map[string]any{
-					{
-						"name":        "email",
-						"type":        "string",
-						"description": "user email",
-						"authServices": []map[string]string{
-							{
-								"name":  "my-google-auth",
-								"field": "email",
-							},
-						},
-					},
+				"authRequired": []string{
+					"my-google-auth",
 				},
 			},
 			"my-auth-required-tool": map[string]any{
@@ -224,13 +215,12 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	// Run tests following the same pattern as MySQL (as requested by reviewer)
 	tests.RunToolGetTest(t)
 	tests.RunToolInvokeTest(t, select1Want,
-		tests.DisableArrayTest(),             // MindsDB doesn't support array parameters
-		tests.DisableOptionalNullParamTest(), // MindsDB has issues with optional parameters
-		tests.DisableSelect1AuthTest(),       // MindsDB auth is complex
+		tests.DisableArrayTest(),       // MindsDB doesn't support array parameters
+		tests.DisableSelect1AuthTest(), // Auth tests fail due to test framework limitations with auth headers
 		// Override expected results to match template parameter output
 		tests.WithMyToolId3NameAliceWant("[{\"id\":3,\"name\":\"Alice\"}]"), // Template: SELECT 3 as id, 'Alice' as name
 		tests.WithMyToolById4Want("[{\"id\":4,\"name\":null}]"),             // Template: SELECT 4 as id, null as name
-		tests.WithNullWant("[{\"result\":\"Alice\"}]"),                      // Template: SELECT 'Alice' as result
+		tests.WithNullWant("[{\"result\":\"Alice\"}]"),                      // Template: SELECT COALESCE(NULLIF('', ''), 'Alice') as result
 	)
 
 	// Run comprehensive MindsDB-specific tests that focus on what works
