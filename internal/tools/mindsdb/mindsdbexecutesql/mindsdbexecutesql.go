@@ -82,10 +82,11 @@ func (cfg Config) Initialize(srcs map[string]sources.Source) (tools.Tool, error)
 	sqlParameter := tools.NewStringParameter("sql", "The sql to execute.")
 	parameters := tools.Parameters{sqlParameter}
 
+	inputSchema, _ := parameters.McpManifest()
 	mcpManifest := tools.McpManifest{
 		Name:        cfg.Name,
 		Description: cfg.Description,
-		InputSchema: parameters.McpManifest(),
+		InputSchema: inputSchema,
 	}
 
 	// finish tool setup
