@@ -175,25 +175,21 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 				"description": "Tool to test statement with incorrect syntax.",
 				"statement":   "INVALID SQL STATEMENT",
 			},
+			"my-exec-sql-tool": map[string]any{
+				"kind":        "mindsdb-execute-sql",
+				"source":      "my-instance",
+				"description": "Tool to execute sql",
+			},
+			"my-auth-exec-sql-tool": map[string]any{
+				"kind":        "mindsdb-execute-sql",
+				"source":      "my-instance",
+				"description": "Tool to execute sql with auth",
+				"authRequired": []string{
+					"my-google-auth",
+				},
+			},
 		},
 	}
-
-	// Add MindsDB execute SQL tools
-	tools := toolsFile["tools"].(map[string]any)
-	tools["my-exec-sql-tool"] = map[string]any{
-		"kind":        "mindsdb-execute-sql",
-		"source":      "my-instance",
-		"description": "Tool to execute sql",
-	}
-	tools["my-auth-exec-sql-tool"] = map[string]any{
-		"kind":        "mindsdb-execute-sql",
-		"source":      "my-instance",
-		"description": "Tool to execute sql with auth",
-		"authRequired": []string{
-			"my-google-auth",
-		},
-	}
-	toolsFile["tools"] = tools
 
 	cmd, cleanup, err := tests.StartCmd(ctx, toolsFile, args...)
 	if err != nil {
