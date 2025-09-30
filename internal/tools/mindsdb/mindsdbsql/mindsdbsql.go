@@ -111,6 +111,76 @@ func (cfg Config) Initialize(srcs map[string]sources.Source) (tools.Tool, error)
 	return t, nil
 }
 
+// interpolateParams replaces ? placeholders with actual parameter values
+// This is necessary because MindsDB doesn't support MySQL prepared statements
+func interpolateParams(query string, params []any) (string, error) {
+	result := query
+	paramIndex := 0
+
+	for paramIndex < len(params) {
+		// Find the next ? placeholder
+		idx := -1
+		for i, ch := range result {
+			if ch == '?' {
+				idx = i
+				break
+			}
+		}
+		if idx == -1 {
+			break // No more placeholders
+		}
+
+		param := params[paramIndex]
+		var replacement string
+
+		switch v := param.(type) {
+		case nil:
+			replacement = "NULL"
+		case string:
+			// Escape single quotes in strings
+			escaped := ""
+			for _, ch := range v {
+				if ch == '\'' {
+					escaped += "''"
+				} else {
+					escaped += string(ch)
+				}
+			}
+			replacement = "'" + escaped + "'"
+		case int, int8, int16, int32, int64:
+			replacement = fmt.Sprintf("%d", v)
+		case uint, uint8, uint16, uint32, uint64:
+			replacement = fmt.Sprintf("%d", v)
+		case float32, float64:
+			replacement = fmt.Sprintf("%v", v)
+		case bool:
+			if v {
+				replacement = "1"
+			} else {
+				replacement = "0"
+			}
+		default:
+			// For other types, try string conversion
+			str := fmt.Sprintf("%v", v)
+			escaped := ""
+			for _, ch := range str {
+				if ch == '\'' {
+					escaped += "''"
+				} else {
+					escaped += string(ch)
+				}
+			}
+			replacement = "'" + escaped + "'"
+		}
+
+		// Replace the first ? with the parameter value
+		result = result[:idx] + replacement + result[idx+1:]
+		paramIndex++
+	}
+
+	return result, nil
+}
+
 // validate interface
 var _ tools.Tool = Tool{}
 
@@ -141,7 +211,15 @@ func (t Tool) Invoke(ctx context.Context, params tools.ParamValues, accessToken 
 	}
 
 	sliceParams := newParams.AsSlice()
-	results, err := t.Pool.QueryContext(ctx, newStatement, sliceParams...)
+
+	// MindsDB doesn't support prepared statements, so we need to interpolate parameters manually
+	// Replace ? placeholders with actual values
+	finalStatement, err := interpolateParams(newStatement, sliceParams)
+	if err != nil {
+		return nil, fmt.Errorf("unable to interpolate params: %w", err)
+	}
+
+	results, err := t.Pool.QueryContext(ctx, finalStatement)
 	if err != nil {
 		return nil, fmt.Errorf("unable to execute query: %w", err)
 	}

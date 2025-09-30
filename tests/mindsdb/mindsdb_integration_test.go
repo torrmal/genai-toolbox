@@ -17,13 +17,17 @@ package mindsdb
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"fmt"
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/google/uuid"
 	"github.com/googleapis/genai-toolbox/internal/testutils"
 	"github.com/googleapis/genai-toolbox/tests"
 )
@@ -71,6 +75,16 @@ func getMindsDBVars(t *testing.T) map[string]any {
 	}
 }
 
+// initMindsDBConnectionPool creates a connection pool to MindsDB using MySQL protocol
+func initMindsDBConnectionPool(host, port, user, pass, dbname string) (*sql.DB, error) {
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, pass, host, port, dbname)
+	pool, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("sql.Open: %w", err)
+	}
+	return pool, nil
+}
+
 func TestMindsDBToolEndpoints(t *testing.T) {
 	sourceConfig := getMindsDBVars(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -78,8 +92,16 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 
 	var args []string
 
-	// Create custom MindsDB tools config that works without parameters
-	// We can't use tests.GetToolsConfig because it always adds parameters that MindsDB can't handle
+	// Create unique table names with UUID
+	tableNameParam := "param_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
+	tableNameAuth := "auth_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
+
+	// These match GetMySQLParamToolInfo and GetMySQLAuthToolInfo patterns
+	paramToolStmt := fmt.Sprintf("SELECT * FROM files.%s WHERE id = ? OR name = ?", tableNameParam)
+	idParamToolStmt := fmt.Sprintf("SELECT * FROM files.%s WHERE id = ?", tableNameParam)
+	nameParamToolStmt := fmt.Sprintf("SELECT * FROM files.%s WHERE name = ?", tableNameParam)
+	authToolStmt := fmt.Sprintf("SELECT name FROM files.%s WHERE email = ?", tableNameAuth)
+
 	toolsFile := map[string]any{
 		"sources": map[string]any{
 			"my-instance": sourceConfig,
@@ -97,12 +119,11 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 				"description": "Simple tool to test end to end functionality.",
 				"statement":   "SELECT 1",
 			},
-			// Test MindsDB with regular SQL parameters (? placeholders)
 			"my-tool": map[string]any{
 				"kind":        MindsDBToolKind,
 				"source":      "my-instance",
 				"description": "Tool to test invocation with params.",
-				"statement":   "SELECT ? + 0 as id, CONCAT(?, '') as name",
+				"statement":   paramToolStmt,
 				"parameters": []map[string]any{
 					{
 						"name":        "id",
@@ -120,7 +141,7 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 				"kind":        MindsDBToolKind,
 				"source":      "my-instance",
 				"description": "Tool to test invocation with params.",
-				"statement":   "SELECT ? + 0 as id, null as name",
+				"statement":   idParamToolStmt,
 				"parameters": []map[string]any{
 					{
 						"name":        "id",
@@ -133,14 +154,13 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 				"kind":        MindsDBToolKind,
 				"source":      "my-instance",
 				"description": "Tool to test invocation with params.",
-				"statement":   "SELECT COALESCE(NULLIF(CONCAT(?, ''), ''), null) as result",
+				"statement":   nameParamToolStmt,
 				"parameters": []map[string]any{
 					{
 						"name":        "name",
 						"type":        "string",
 						"description": "user name",
 						"required":    false,
-						"default":     "",
 					},
 				},
 			},
@@ -149,15 +169,24 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 				"source":      "my-instance",
 				"description": "Tool to test invocation with array params.",
 				"statement":   "SELECT 1 as id, 'Alice' as name UNION SELECT 3 as id, 'Sid' as name",
-				// NO parameters
 			},
 			"my-auth-tool": map[string]any{
 				"kind":        MindsDBToolKind,
 				"source":      "my-instance",
 				"description": "Tool to test authenticated parameters.",
-				"statement":   "SELECT 'Alice' as name",
-				"authRequired": []string{
-					"my-google-auth",
+				"statement":   authToolStmt,
+				"parameters": []map[string]any{
+					{
+						"name":        "email",
+						"type":        "string",
+						"description": "user email",
+						"authServices": []map[string]string{
+							{
+								"name":  "my-google-auth",
+								"field": "email",
+							},
+						},
+					},
 				},
 			},
 			"my-auth-required-tool": map[string]any{
@@ -205,17 +234,52 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 		t.Fatalf("toolbox didn't start successfully: %s", err)
 	}
 
+	// Now that server is running, create tables with real data (following MySQL pattern)
+	pool, err := initMindsDBConnectionPool(MindsDBHost, MindsDBPort, MindsDBUser, MindsDBPass, MindsDBDatabase)
+	if err != nil {
+		t.Fatalf("unable to create MindsDB connection pool: %s", err)
+	}
+	defer pool.Close()
+
+	// For MindsDB files database, we create tables using SELECT/UNION syntax
+	// This inserts the same data as MySQL tests: id=1:Alice, id=2:Jane, id=3:Sid, id=4:null
+	createParamSQL := fmt.Sprintf("CREATE TABLE files.%s (SELECT 1 as id, 'Alice' as name UNION ALL SELECT 2, 'Jane' UNION ALL SELECT 3, 'Sid' UNION ALL SELECT 4, NULL)", tableNameParam)
+	_, err = pool.ExecContext(ctx, createParamSQL)
+	if err != nil {
+		t.Fatalf("unable to create param table: %s", err)
+	}
+
+	// Create auth table with same data as MySQL: id=1:Alice:test@..., id=2:Jane:jane@...
+	createAuthSQL := fmt.Sprintf("CREATE TABLE files.%s (SELECT 1 as id, 'Alice' as name, '%s' as email UNION ALL SELECT 2, 'Jane', 'janedoe@gmail.com')", tableNameAuth, tests.ServiceAccountEmail)
+	_, err = pool.ExecContext(ctx, createAuthSQL)
+	if err != nil {
+		t.Fatalf("unable to create auth table: %s", err)
+	}
+
+	// Cleanup function - executes AFTER test completes
+	defer func() {
+		pool.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS files.%s", tableNameParam))
+		pool.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS files.%s", tableNameAuth))
+	}()
+
 	// Get configs for tests
 	select1Want := "[{\"1\":1}]"
 
 	// Run tests following the same pattern as MySQL (as requested by reviewer)
+	// Now querying real data from files tables with parameter interpolation
 	tests.RunToolGetTest(t)
 	tests.RunToolInvokeTest(t, select1Want,
 		tests.DisableArrayTest(), // MindsDB doesn't support array parameters
-		// Adjust expectations for MindsDB's output format with regular SQL parameters
-		tests.WithMyToolId3NameAliceWant("[{\"id\":3,\"name\":\"Alice\"}]"),
+		// Adjust expectations for MindsDB's output format querying real data
+		// my-tool: SELECT * FROM files.{table} WHERE id = 3 OR name = 'Alice'
+		// Returns both id=1(Alice) and id=3(Sid)
+		tests.WithMyToolId3NameAliceWant("[{\"id\":1,\"name\":\"Alice\"},{\"id\":3,\"name\":\"Sid\"}]"),
+		// my-tool-by-id: SELECT * FROM files.{table} WHERE id = 4
+		// Returns id=4 with null name
 		tests.WithMyToolById4Want("[{\"id\":4,\"name\":null}]"),
-		tests.WithNullWant("[{\"result\":null}]"),
+		// my-tool-by-name: SELECT * FROM files.{table} WHERE name = NULL
+		// Returns empty result set when name is not provided
+		tests.WithNullWant("null"),
 	)
 
 	// Run comprehensive MindsDB-specific tests that focus on what works
