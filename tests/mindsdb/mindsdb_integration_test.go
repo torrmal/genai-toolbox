@@ -215,9 +215,7 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	// Run tests following the same pattern as MySQL (as requested by reviewer)
 	tests.RunToolGetTest(t)
 	tests.RunToolInvokeTest(t, select1Want,
-		tests.DisableArrayTest(),       // MindsDB doesn't support array parameters
-		tests.DisableSelect1AuthTest(), // Test framework limitation with auth headers (not MindsDB limitation)
-
+		tests.DisableArrayTest(), // MindsDB doesn't support array parameters
 		// Adjust expectations for MindsDB's output format with regular SQL parameters
 		tests.WithMyToolId3NameAliceWant("[{\"id\":3,\"name\":\"Alice\"}]"),
 		tests.WithMyToolById4Want("[{\"id\":4,\"name\":null}]"),
