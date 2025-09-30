@@ -105,6 +105,33 @@ func EnableClientAuthTest() InvokeTestOption {
 	}
 }
 
+// WithMindsDBMyToolWant represents the response value for MindsDB my-tool with regular SQL parameters.
+// MindsDB uses specific syntax: SELECT ? + 0 as id, CONCAT(?, ”) as name
+// e.g. tests.RunToolInvokeTest(t, select1Want, tests.WithMindsDBMyToolWant())
+func WithMindsDBMyToolWant() InvokeTestOption {
+	return func(c *InvokeTestConfig) {
+		c.myToolId3NameAliceWant = "[{\"id\":3,\"name\":\"Alice\"}]"
+	}
+}
+
+// WithMindsDBMyToolByIdWant represents the response value for MindsDB my-tool-by-id with regular SQL parameters.
+// MindsDB uses specific syntax: SELECT ? + 0 as id, null as name
+// e.g. tests.RunToolInvokeTest(t, select1Want, tests.WithMindsDBMyToolByIdWant())
+func WithMindsDBMyToolByIdWant() InvokeTestOption {
+	return func(c *InvokeTestConfig) {
+		c.myToolById4Want = "[{\"id\":4,\"name\":null}]"
+	}
+}
+
+// WithMindsDBNullWant represents the response value for MindsDB null results with regular SQL parameters.
+// MindsDB uses specific syntax: COALESCE(NULLIF(CONCAT(?, ”), ”), null)
+// e.g. tests.RunToolInvokeTest(t, select1Want, tests.WithMindsDBNullWant())
+func WithMindsDBNullWant() InvokeTestOption {
+	return func(c *InvokeTestConfig) {
+		c.nullWant = "[{\"result\":null}]"
+	}
+}
+
 /* Configurations for RunMCPToolCallMethod()  */
 
 // MCPTestConfig represents the various configuration options for mcp tool call tests.
