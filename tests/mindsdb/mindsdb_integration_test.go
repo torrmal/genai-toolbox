@@ -97,10 +97,11 @@ func TestMindsDBToolEndpoints(t *testing.T) {
 	tableNameAuth := "auth_table_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 
 	// These match GetMySQLParamToolInfo and GetMySQLAuthToolInfo patterns
-	paramToolStmt := fmt.Sprintf("SELECT * FROM files.%s WHERE id = ? OR name = ?", tableNameParam)
-	idParamToolStmt := fmt.Sprintf("SELECT * FROM files.%s WHERE id = ?", tableNameParam)
-	nameParamToolStmt := fmt.Sprintf("SELECT * FROM files.%s WHERE name = ?", tableNameParam)
-	authToolStmt := fmt.Sprintf("SELECT name FROM files.%s WHERE email = ?", tableNameAuth)
+	// Add ORDER BY to guarantee consistent order in results
+	paramToolStmt := fmt.Sprintf("SELECT * FROM files.%s WHERE id = ? OR name = ? ORDER BY id", tableNameParam)
+	idParamToolStmt := fmt.Sprintf("SELECT * FROM files.%s WHERE id = ? ORDER BY id", tableNameParam)
+	nameParamToolStmt := fmt.Sprintf("SELECT * FROM files.%s WHERE name = ? ORDER BY id", tableNameParam)
+	authToolStmt := fmt.Sprintf("SELECT name FROM files.%s WHERE email = ? ORDER BY name", tableNameAuth)
 
 	toolsFile := map[string]any{
 		"sources": map[string]any{
