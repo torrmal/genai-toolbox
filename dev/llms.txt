@@ -71,6 +71,7 @@ List of reference documentation for resources in Toolbox.
   - [MySQL](https://torrmal.github.io/genai-toolbox/dev/resources/sources/mysql/): MySQL is a relational database management system that stores and manages data.
   - [Neo4j](https://torrmal.github.io/genai-toolbox/dev/resources/sources/neo4j/): Neo4j is a powerful, open source graph database system
   - [OceanBase](https://torrmal.github.io/genai-toolbox/dev/resources/sources/oceanbase/): OceanBase is a distributed relational database that provides high availability, scalability, and compatibility with MySQL.
+  - [Oracle](https://torrmal.github.io/genai-toolbox/dev/resources/sources/oracle/): Oracle Database is a widely-used relational database management system.
   - [PostgreSQL](https://torrmal.github.io/genai-toolbox/dev/resources/sources/postgres/): PostgreSQL is a powerful, open source object-relational database.
   - [Redis](https://torrmal.github.io/genai-toolbox/dev/resources/sources/redis/): Redis is a in-memory data structure store.
   - [Spanner](https://torrmal.github.io/genai-toolbox/dev/resources/sources/spanner/): Spanner is a fully managed database service from Google Cloud that combines  relational, key-value, graph, and search capabilities.
@@ -103,6 +104,7 @@ List of reference documentation for resources in Toolbox.
   - [MySQL](https://torrmal.github.io/genai-toolbox/dev/resources/tools/mysql/): Tools that work with MySQL Sources, such as Cloud SQL for MySQL.
   - [Neo4j](https://torrmal.github.io/genai-toolbox/dev/resources/tools/neo4j/): Tools that work with Neo4j Sources.
   - [OceanBase](https://torrmal.github.io/genai-toolbox/dev/resources/tools/oceanbase/): Tools that work with OceanBase Sources.
+  - [Oracle](https://torrmal.github.io/genai-toolbox/dev/resources/tools/oracle/): Tools that work with Oracle Sources.
   - [Postgres](https://torrmal.github.io/genai-toolbox/dev/resources/tools/postgres/): Tools that work with Postgres Sources, such as Cloud SQL for Postgres and AlloyDB. 
   - [Redis](https://torrmal.github.io/genai-toolbox/dev/resources/tools/redis/): Tools that work with Redis Sources.
   - [Spanner](https://torrmal.github.io/genai-toolbox/dev/resources/tools/spanner/): Tools that work with Spanner Sources.
@@ -112,7 +114,7 @@ List of reference documentation for resources in Toolbox.
   - [Trino](https://torrmal.github.io/genai-toolbox/dev/resources/tools/trino/): Tools that work with Trino Sources, such as distributed SQL query engine.
   - [Utility tools](https://torrmal.github.io/genai-toolbox/dev/resources/tools/utility/): Tools that provide utility.
   - [Valkey](https://torrmal.github.io/genai-toolbox/dev/resources/tools/valkey/): Tools that work with Valkey Sources.
-  - [yugabytedb-sql](https://torrmal.github.io/genai-toolbox/dev/resources/tools/yugabytedb-sql/): A "yugabytedb-sql" tool executes a pre-defined SQL statement against a YugabyteDB database.
+  - [YugabyteDB](https://torrmal.github.io/genai-toolbox/dev/resources/tools/yuagbytedb/): Tools that work with Valkey Sources.
 
 ### Samples
 
