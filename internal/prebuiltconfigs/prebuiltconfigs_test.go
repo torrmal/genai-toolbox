@@ -45,6 +45,7 @@ var expectedToolSources = []string{
 	"neo4j",
 	"oceanbase",
 	"postgres",
+	"serverless-spark",
 	"spanner-postgres",
 	"spanner",
 	"sqlite",
